@@ -1,0 +1,24 @@
+# venv
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+src/*.egg-info/
+.pytest_cache/
+
+# data / artifacts
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-wal
+data/*.sqlite-shm
+samples/
+_sample_response.json
+*.har
+
+# editor
+.vscode/
+.idea/

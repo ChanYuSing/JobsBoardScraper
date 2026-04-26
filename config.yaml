@@ -1,0 +1,12 @@
+search:
+  url: "https://hk.jobsdb.com/jobs?daterange=3"
+  page_size: 32
+
+scraper:
+  request_timeout_seconds: 20
+  retries: 3
+  jitter_ms: [1500, 3500]
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
+storage:
+  sqlite_path: "data/jobs.sqlite"

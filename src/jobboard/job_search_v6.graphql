@@ -1,0 +1,277 @@
+query JobSearchV6($params: JobSearchV6QueryInput!, $locale: Locale!, $timezone: Timezone!) {
+  jobSearchV6(params: $params) {
+    canonicalCompany {
+      description
+      __typename
+    }
+    data {
+      advertiser {
+        id
+        description
+        __typename
+      }
+      branding {
+        serpLogoUrl
+        __typename
+      }
+      bulletPoints
+      classifications {
+        classification {
+          id
+          description
+          __typename
+        }
+        subclassification {
+          id
+          description
+          __typename
+        }
+        __typename
+      }
+      companyName
+      companyProfileStructuredDataId
+      currencyLabel
+      displayType
+      employer {
+        companyUrl
+        __typename
+      }
+      externalReferences {
+        id
+        sourceSystem
+        type
+        metadata {
+          name
+          assets {
+            profilePhotoUrl
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      id
+      isFeatured
+      listingDate {
+        dateTimeUtc
+        label(context: JOB_POSTED, length: SHORT, timezone: $timezone, locale: $locale)
+        __typename
+      }
+      locations {
+        countryCode
+        label
+        seoHierarchy {
+          contextualName
+          __typename
+        }
+        __typename
+      }
+      roleId
+      salaryLabel
+      solMetadata
+      tags {
+        label
+        type
+        __typename
+      }
+      teaser
+      title
+      tracking
+      workArrangements {
+        displayText
+        __typename
+      }
+      workTypes
+      __typename
+    }
+    facets {
+      distinctTitle {
+        count
+        id
+        label
+        __typename
+      }
+      location {
+        count
+        id
+        label {
+          lang
+          text
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    gptTargeting {
+      ... on GptTargetingStringValue {
+        key
+        value
+        __typename
+      }
+      ... on GptTargetingStringArrayValue {
+        key
+        values
+        __typename
+      }
+      __typename
+    }
+    info {
+      experiment
+      newSince
+      source
+      timeTaken
+      __typename
+    }
+    intentSuggestions {
+      count
+      id
+      label {
+        defaultText
+        lang
+        __typename
+      }
+      params {
+        classification
+        companyName
+        dateRange
+        distance
+        keywords
+        maxSalary
+        minSalary
+        salaryType
+        siteKey
+        sortMode
+        subclassification
+        tags
+        where
+        workArrangement
+        workTypes
+        __typename
+      }
+      type
+      __typename
+    }
+    isQueryModified
+    location {
+      defaultDistanceKms
+      description
+      isGranular
+      localisedDescriptions {
+        contextualName
+        lang
+        __typename
+      }
+      locationDescription
+      type
+      whereId
+      __typename
+    }
+    searchExecuted {
+      classification
+      companyName
+      dateRange
+      distance
+      keywords
+      maxSalary
+      minSalary
+      salaryType
+      siteKey
+      sortMode
+      subclassification
+      tags
+      where
+      workArrangement
+      workTypes
+      __typename
+    }
+    searchParams {
+      advertisergroup
+      advertiserid
+      basekeywords
+      classification
+      companyid
+      companyname
+      companyprofilestructureddataid
+      companysearch
+      daterange
+      distance
+      duplicates
+      encodedurl
+      engineconfig
+      eventcapturesessionid
+      eventcaptureuserid
+      facets
+      include
+      jobid
+      keywords
+      locale
+      maxlistingdate
+      minlistingdate
+      newsince
+      page
+      pagesize
+      queryhints
+      relatedsearchescount
+      salaryrange
+      salarytype
+      savedsearchid
+      sitekey
+      solid
+      sortmode
+      source
+      statetoken
+      subclassification
+      tags
+      userid
+      userqueryid
+      usersessionid
+      where
+      whereid
+      whereids
+      workarrangement
+      worktype
+      __typename
+    }
+    solMetadata
+    sortModes {
+      isActive
+      name
+      value
+      __typename
+    }
+    suggestions {
+      asyncPillsToken
+      company {
+        count
+        search {
+          companyName
+          keywords
+          __typename
+        }
+        __typename
+      }
+      location {
+        description
+        whereId
+        __typename
+      }
+      pills {
+        isActive
+        keywords
+        label
+        __typename
+      }
+      relatedSearches {
+        keywords
+        totalJobs
+        __typename
+      }
+      showSABFilter
+      __typename
+    }
+    totalCount
+    userQueryId
+    __typename
+  }
+}
