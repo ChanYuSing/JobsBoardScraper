@@ -1,11 +1,48 @@
-search:
-  url: "https://hk.jobsdb.com/jobs?daterange=3"
-  page_size: 32
+sources:
+  jobsdb:
+    enabled: true
+    url: "https://hk.jobsdb.com/jobs?daterange=3"
+    page_size: 32
+
+  jobspy_linkedin:
+    enabled: true
+    location: "Hong Kong"
+    keywords: ["machine learning", "quant", "data"]          #  e.g. ["software engineer", "data analyst"]
+    hours_old: 72
+    results_wanted: 200
+    fetch_description: true
+
+  jobspy_indeed:
+    enabled: true
+    location: "Hong Kong"
+    country: "Hong Kong"
+    keywords: ["machine learning", "quant", "data"]
+    hours_old: 72
+    results_wanted: 200
+    fetch_description: true
+
+  jobspy_glassdoor:
+    enabled: false       # JobSpy Glassdoor currently fails for HK with `location not parsed` / HTTP 400.
+                         # Re-enable only after finding a Glassdoor location string JobSpy accepts.
+    location: "Hong Kong"
+    country: "Hong Kong"
+    keywords: ["machine learning", "quant", "data"]
+    hours_old: 72
+    results_wanted: 200
+    fetch_description: true
+
+  jobspy_ziprecruiter:
+    enabled: false        # ZipRecruiter has no HK presence; off by default
+    location: "Hong Kong"
+    keywords: []
+    hours_old: 72
+    results_wanted: 200
+    fetch_description: true
 
 scraper:
   request_timeout_seconds: 20
   retries: 3
-  jitter_ms: [1500, 3500]
+  jitter_ms: [1000, 3000]     # Random delay between retries to avoid hammering servers
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 
 storage:

@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from importlib.resources import files
 from pathlib import Path
 from typing import Literal
 
 from .normalise import JobRecord
+
+
+def _bool_to_int(b: bool | None) -> int | None:
+    """Map ``True/False/None`` to ``1/0/None`` for SQLite storage."""
+    return None if b is None else int(b)
+
 
 # Schema lives next to the package (see [tool.setuptools.package-data] in pyproject.toml).
 _SCHEMA_SQL = files(__package__).joinpath("schema.sql").read_text(encoding="utf-8")
@@ -18,7 +24,7 @@ def _now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Connect / init / migrate
+# Connect / init
 # ---------------------------------------------------------------------------
 def connect(path: str | Path) -> sqlite3.Connection:
     p = Path(path)
@@ -31,9 +37,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    # Migrate any pre-existing legacy `job` table BEFORE running the schema
-    # script, because the script creates indexes on columns added in step 2.
-    _migrate_legacy_job(conn)
+    """Apply the (idempotent) schema script and tidy up orphaned runs."""
     conn.executescript(_SCHEMA_SQL)
     _sweep_orphan_runs(conn)
     conn.commit()
@@ -53,50 +57,13 @@ def _sweep_orphan_runs(conn: sqlite3.Connection) -> None:
     )
 
 
-def _migrate_legacy_job(conn: sqlite3.Connection) -> None:
-    """Add columns introduced in later steps to pre-existing job tables.
-
-    Old columns from removed features (closed_at, params_hash, etc.) are left
-    in place: SQLite cannot easily drop columns, and unused columns are inert.
-    """
-    table_exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job'"
-    ).fetchone()
-    if not table_exists:
-        return
-    cols = {row["name"] for row in conn.execute("PRAGMA table_info(job)")}
-    if "first_seen_run_id" not in cols:
-        conn.execute("ALTER TABLE job ADD COLUMN first_seen_run_id INTEGER")
-    if "last_seen_run_id" not in cols:
-        conn.execute("ALTER TABLE job ADD COLUMN last_seen_run_id INTEGER")
-    # detail-fetch columns
-    for name, sql_type in (
-        ("description_html",  "TEXT"),
-        ("description_text",  "TEXT"),
-        ("abstract",          "TEXT"),
-        ("expires_at_utc",    "TEXT"),
-        ("is_expired",        "INTEGER"),
-        ("detail_raw",        "TEXT"),
-        ("detail_fetched_at", "TEXT"),
-        ("detail_error",      "TEXT"),
-    ):
-        if name not in cols:
-            conn.execute(f"ALTER TABLE job ADD COLUMN {name} {sql_type}")
-    # Backfill: any pre-step-2 row should at least pretend it was first seen
-    # on whatever its most recent run was. Harmless if no-op.
-    conn.execute(
-        "UPDATE job SET first_seen_run_id = last_seen_run_id "
-        "WHERE first_seen_run_id IS NULL AND last_seen_run_id IS NOT NULL"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Run lifecycle
 # ---------------------------------------------------------------------------
-def start_run(conn: sqlite3.Connection) -> int:
+def start_run(conn: sqlite3.Connection, source: str) -> int:
     cur = conn.execute(
-        "INSERT INTO run (started_at, status) VALUES (?, 'running')",
-        (_now_iso(),),
+        "INSERT INTO run (source, started_at, status) VALUES (?, ?, 'running')",
+        (source, _now_iso()),
     )
     conn.commit()
     return int(cur.lastrowid)
@@ -137,26 +104,47 @@ UpsertOutcome = Literal["inserted", "updated"]
 def upsert_job(
     conn: sqlite3.Connection, rec: JobRecord, run_id: int
 ) -> UpsertOutcome:
-    """Insert a new job or update an existing one. Returns the outcome."""
+    """Insert a new job or update an existing one. Returns the outcome.
+
+    Adapters that fetch full details inline (e.g. JobSpy) populate the optional
+    ``description_*`` / ``detail_raw`` fields on the record; we persist them on
+    insert and use ``COALESCE`` on update so a later search-only refresh never
+    blanks out a description we already have.
+    """
     now = _now_iso()
-    existing = conn.execute("SELECT 1 FROM job WHERE id = ?", (rec.id,)).fetchone()
-    params = {**_record_params(rec), "now": now, "run_id": run_id}
+    existing = conn.execute(
+        "SELECT 1 FROM job WHERE source = ? AND external_id = ?",
+        (rec.source, rec.external_id),
+    ).fetchone()
+    has_inline_detail = bool(rec.description_text or rec.description_html)
+    params = {
+        **_record_params(rec),
+        "now": now,
+        "run_id": run_id,
+        "detail_fetched_at": now if has_inline_detail else None,
+    }
 
     if existing is None:
         conn.execute(
             """
             INSERT INTO job (
-                id, title, company, location, classification, subclassification,
+                source, external_id, title, company, location,
+                classification, subclassification,
                 work_types, work_arrangement, salary_label, teaser, bullet_points,
                 listing_date_utc, listing_date_label, url, raw,
                 first_seen_at, last_seen_at,
-                first_seen_run_id, last_seen_run_id
+                first_seen_run_id, last_seen_run_id,
+                description_html, description_text, abstract,
+                expires_at_utc, is_expired, detail_raw, detail_fetched_at
             ) VALUES (
-                :id, :title, :company, :location, :classification, :subclassification,
+                :source, :external_id, :title, :company, :location,
+                :classification, :subclassification,
                 :work_types, :work_arrangement, :salary_label, :teaser, :bullet_points,
                 :listing_date_utc, :listing_date_label, :url, :raw,
                 :now, :now,
-                :run_id, :run_id
+                :run_id, :run_id,
+                :description_html, :description_text, :abstract,
+                :expires_at_utc, :is_expired, :detail_raw, :detail_fetched_at
             )
             """,
             params,
@@ -181,8 +169,15 @@ def upsert_job(
             url                = :url,
             raw                = :raw,
             last_seen_at       = :now,
-            last_seen_run_id   = :run_id
-         WHERE id = :id
+            last_seen_run_id   = :run_id,
+            description_html   = COALESCE(:description_html, description_html),
+            description_text   = COALESCE(:description_text, description_text),
+            abstract           = COALESCE(:abstract, abstract),
+            expires_at_utc     = COALESCE(:expires_at_utc, expires_at_utc),
+            is_expired         = COALESCE(:is_expired, is_expired),
+            detail_raw         = COALESCE(:detail_raw, detail_raw),
+            detail_fetched_at  = COALESCE(:detail_fetched_at, detail_fetched_at)
+         WHERE source = :source AND external_id = :external_id
         """,
         params,
     )
@@ -191,7 +186,8 @@ def upsert_job(
 
 def _record_params(rec: JobRecord) -> dict:
     return {
-        "id": rec.id,
+        "source": rec.source,
+        "external_id": rec.external_id,
         "title": rec.title,
         "company": rec.company,
         "location": rec.location,
@@ -206,6 +202,12 @@ def _record_params(rec: JobRecord) -> dict:
         "listing_date_label": rec.listing_date_label,
         "url": rec.url,
         "raw": rec.raw_json,
+        "description_html": rec.description_html,
+        "description_text": rec.description_text,
+        "abstract": rec.abstract,
+        "expires_at_utc": rec.expires_at_utc,
+        "is_expired": _bool_to_int(rec.is_expired),
+        "detail_raw": rec.detail_raw,
     }
 
 
@@ -215,11 +217,15 @@ def _record_params(rec: JobRecord) -> dict:
 def jobs_needing_detail(
     conn: sqlite3.Connection,
     *,
+    source: str | None = None,
     stale_days: int | None = None,
     limit: int | None = None,
-) -> list[str]:
-    """Return job ids that have no detail yet, or whose detail is older than
-    ``stale_days`` days."""
+) -> list[tuple[str, str]]:
+    """Return ``(source, external_id)`` pairs for jobs that have no detail yet,
+    or whose detail is older than ``stale_days`` days.
+
+    If ``source`` is given, restrict to that source.
+    """
     where = ["(detail_fetched_at IS NULL"]
     args: list = []
     if stale_days is not None:
@@ -227,16 +233,23 @@ def jobs_needing_detail(
         where.append("OR detail_fetched_at < ?")
         args.append(cutoff)
     where_sql = " ".join(where) + ")"
-    sql = f"SELECT id FROM job WHERE {where_sql} ORDER BY first_seen_at DESC"
+    if source is not None:
+        where_sql += " AND source = ?"
+        args.append(source)
+    sql = (
+        f"SELECT source, external_id FROM job WHERE {where_sql} "
+        "ORDER BY first_seen_at DESC"
+    )
     if limit is not None:
         sql += " LIMIT ?"
         args.append(limit)
-    return [row["id"] for row in conn.execute(sql, args)]
+    return [(row["source"], row["external_id"]) for row in conn.execute(sql, args)]
 
 
 def update_job_detail(
     conn: sqlite3.Connection,
-    job_id: str,
+    source: str,
+    external_id: str,
     *,
     description_html: str | None,
     description_text: str | None,
@@ -256,15 +269,16 @@ def update_job_detail(
             detail_raw        = :detail_raw,
             detail_fetched_at = :now,
             detail_error      = NULL
-         WHERE id = :id
+         WHERE source = :source AND external_id = :external_id
         """,
         {
-            "id": job_id,
+            "source": source,
+            "external_id": external_id,
             "description_html": description_html,
             "description_text": description_text,
             "abstract": abstract,
             "expires_at_utc": expires_at_utc,
-            "is_expired": 1 if is_expired else 0 if is_expired is not None else None,
+            "is_expired": _bool_to_int(is_expired),
             "detail_raw": detail_raw,
             "now": _now_iso(),
         },
@@ -273,32 +287,22 @@ def update_job_detail(
 
 def record_detail_error(
     conn: sqlite3.Connection,
-    job_id: str,
+    source: str,
+    external_id: str,
     error: str,
-    *,
-    transient: bool = False,
 ) -> None:
     """Store the error message for a failed detail fetch.
 
-    For ``transient`` errors (Cloudflare blocks, 5xx) we deliberately leave
-    ``detail_fetched_at`` untouched so the next enrich run re-attempts the
-    job immediately. For permanent errors (404, parse failure, etc.) we set
-    ``detail_fetched_at`` so the job is skipped until ``--stale-days``.
+    We intentionally keep ``detail_fetched_at`` untouched so failed jobs stay
+    eligible for retry on the next enrich run.
     """
-    if transient:
-        conn.execute(
-            "UPDATE job SET detail_error = ? WHERE id = ?",
-            (error[:500], job_id),
-        )
-    else:
-        conn.execute(
-            "UPDATE job SET detail_error = ?, detail_fetched_at = ? WHERE id = ?",
-            (error[:500], _now_iso(), job_id),
-        )
+    conn.execute(
+        "UPDATE job SET detail_error = ? WHERE source = ? AND external_id = ?",
+        (error[:500], source, external_id),
+    )
 
 
 def _now_minus_days(days: int) -> str:
-    from datetime import timedelta
     return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )

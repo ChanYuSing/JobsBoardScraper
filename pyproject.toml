@@ -1,7 +1,7 @@
 [project]
 name = "jobboard"
-version = "0.1.0"
-description = "JobsDB scraper -> SQLite"
+version = "0.2.0"
+description = "Multi-source job-board scraper (JobsDB + JobSpy) -> SQLite"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.27",
@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "typer>=0.12",
+    "python-jobspy>=1.1.70",
 ]
 
 [project.optional-dependencies]
