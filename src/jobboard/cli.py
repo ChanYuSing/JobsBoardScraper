@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 import typer
 
-from .client import (
+from .sources.jobsdb.adapter import (
     CloudflareBlockedError,
     RateLimitedError,
     TransientServerError,
@@ -20,11 +20,7 @@ from .db import (
     connect,
     finish_run,
     init_schema,
-    jobs_needing_detail,
-    record_detail_error,
     start_run,
-    update_job_detail,
-    upsert_job,
 )
 from .sources import KNOWN_SOURCES, build_adapter
 
@@ -149,11 +145,12 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
             if hasattr(adapter, "search_paginated"):
                 last_page_done = 0
                 try:
+                    from .sources.jobsdb import db as jdb_db
                     for page, recs, total in adapter.search_paginated():  # type: ignore[attr-defined]
                         log.info("Page %d: %d jobs (totalCount=%s)",
                                  page, len(recs), total)
                         for rec in recs:
-                            outcome = upsert_job(conn, rec, run_id)
+                            outcome = jdb_db.upsert_card(conn, rec, run_id)
                             if outcome == "inserted":
                                 inserted += 1
                             else:
@@ -172,14 +169,15 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                         last_page_done + 1,
                     )
             else:
-                # Generic adapters (JobSpy etc.) -- just iterate records.
-                for rec in adapter.search():
-                    outcome = upsert_job(conn, rec, run_id)
-                    if outcome == "inserted":
-                        inserted += 1
-                    else:
-                        updated += 1
-                    total_seen += 1
+                if source == "linkedin_guest":
+                    from .sources.linkedin import db as li_db
+                    for card in adapter.search():
+                        outcome = li_db.upsert_card(conn, card, run_id)
+                        if outcome == "inserted":
+                            inserted += 1
+                        else:
+                            updated += 1
+                        total_seen += 1
                 conn.commit()
     except CloudflareBlockedError as exc:
         cf_blocked = True
@@ -246,16 +244,26 @@ def new_jobs(
     """List jobs first seen within the given window."""
     cutoff = _parse_since(since).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = _open_db(config_path)
-    sql = (
-        "SELECT source, external_id, title, company, work_arrangement, "
-        "       first_seen_at, url "
-        "  FROM job WHERE first_seen_at >= ?"
-    )
-    args: list = [cutoff]
-    if source != "all":
-        sql += " AND source = ?"
-        args.append(source)
-    sql += " ORDER BY first_seen_at DESC LIMIT ?"
+    parts: list[str] = []
+    args: list = []
+    if source in ("all", "linkedin_guest"):
+        parts.append(
+            "SELECT 'linkedin_guest' AS source, job_id AS external_id, "
+            "       title, company, first_seen_at, url "
+            "  FROM job_linkedin WHERE first_seen_at >= ?"
+        )
+        args.append(cutoff)
+    if source in ("all", "jobsdb"):
+        parts.append(
+            "SELECT 'jobsdb' AS source, job_id AS external_id, "
+            "       title, company, first_seen_at, url "
+            "  FROM job_jobsdb WHERE first_seen_at >= ?"
+        )
+        args.append(cutoff)
+    if not parts:
+        typer.echo(f"Unknown source '{source}'.")
+        return
+    sql = " UNION ALL ".join(parts) + " ORDER BY first_seen_at DESC LIMIT ?"
     args.append(limit)
     rows = conn.execute(sql, args).fetchall()
     _print_rows(
@@ -338,70 +346,75 @@ def enrich(
 def _enrich_one(
     conn: sqlite3.Connection, adapter, source: str, limit: int, stale_days: int
 ) -> int:
-    pairs = jobs_needing_detail(
-        conn,
-        source=source,
-        stale_days=stale_days if stale_days > 0 else None,
-        limit=limit if limit > 0 else None,
-    )
-    if not pairs:
+    stale = stale_days if stale_days > 0 else None
+    lim = limit if limit > 0 else None
+
+    if source == "linkedin_guest":
+        from .sources.linkedin import db as li_db
+        job_ids = li_db.jobs_needing_enrich(conn, stale_days=stale, limit=lim)
+
+        def _write_detail(job_id: str, detail) -> None:
+            li_db.upsert_detail(conn, job_id, detail)
+
+        def _write_error(job_id: str, error: str) -> None:
+            li_db.record_detail_error(conn, job_id, error)
+
+    elif source == "jobsdb":
+        from .sources.jobsdb import db as jdb_db
+        job_ids = jdb_db.jobs_needing_enrich(conn, stale_days=stale, limit=lim)
+
+        def _write_detail(job_id: str, detail) -> None:
+            jdb_db.upsert_detail(conn, job_id, detail)
+
+        def _write_error(job_id: str, error: str) -> None:
+            jdb_db.record_detail_error(conn, job_id, error)
+
+    else:
+        log.error("[%s] No enrich path configured for this source.", source)
+        return 1
+
+    if not job_ids:
         typer.echo(f"[{source}] Nothing to enrich.")
         return 0
 
-    typer.echo(f"[{source}] Enriching {len(pairs)} job(s)...")
+    typer.echo(f"[{source}] Enriching {len(job_ids)} job(s)...")
     ok = err = 0
     blocked = False
     with adapter:
-        for i, (src, ext_id) in enumerate(pairs, 1):
+        for i, job_id in enumerate(job_ids, 1):
             try:
-                payload = adapter.fetch_detail(ext_id)
+                payload = adapter.fetch_detail(job_id)
                 detail = adapter.parse_detail(payload or {})
-                update_job_detail(
-                    conn, src, ext_id,
-                    description_html=detail.description_html,
-                    description_text=detail.description_text,
-                    abstract=detail.abstract,
-                    expires_at_utc=detail.expires_at_utc,
-                    is_expired=detail.is_expired,
-                    detail_raw=detail.raw_json,
-                )
+                _write_detail(job_id, detail)
                 ok += 1
             except CloudflareBlockedError as exc:
                 log.error("[%s] Cloudflare blocked at %s (%d/%d). Stopping.",
-                          source, ext_id, i, len(pairs))
-                record_detail_error(
-                    conn, src, ext_id, f"CloudflareBlockedError: {exc}",
-                )
+                          source, job_id, i, len(job_ids))
+                _write_error(job_id, f"CloudflareBlockedError: {exc}")
                 err += 1
                 conn.commit()
                 blocked = True
                 break
             except RateLimitedError as exc:
                 log.error("[%s] RATE_LIMITED at %s (%d/%d). Stopping.",
-                          source, ext_id, i, len(pairs))
-                record_detail_error(
-                    conn, src, ext_id, f"RateLimitedError: {exc}",
-                )
+                          source, job_id, i, len(job_ids))
+                _write_error(job_id, f"RateLimitedError: {exc}")
                 err += 1
                 conn.commit()
                 blocked = True
                 break
             except (TransientServerError, httpx.HTTPError) as exc:
-                log.warning("[%s] transient error for %s: %s", source, ext_id, exc)
-                record_detail_error(
-                    conn, src, ext_id, f"{type(exc).__name__}: {exc}",
-                )
+                log.warning("[%s] transient error for %s: %s", source, job_id, exc)
+                _write_error(job_id, f"{type(exc).__name__}: {exc}")
                 err += 1
             except Exception as exc:  # noqa: BLE001
-                log.warning("[%s] detail failed for %s: %s", source, ext_id, exc)
-                record_detail_error(
-                    conn, src, ext_id, f"{type(exc).__name__}: {exc}",
-                )
+                log.warning("[%s] detail failed for %s: %s", source, job_id, exc)
+                _write_error(job_id, f"{type(exc).__name__}: {exc}")
                 err += 1
             conn.commit()
-            if i % 10 == 0 or i == len(pairs):
+            if i % 10 == 0 or i == len(job_ids):
                 log.info("[%s] progress: %d/%d  ok=%d err=%d",
-                         source, i, len(pairs), ok, err)
+                         source, i, len(job_ids), ok, err)
             sleep_jitter = getattr(adapter, "sleep_jitter", None)
             if sleep_jitter:
                 sleep_jitter()
@@ -409,10 +422,10 @@ def _enrich_one(
     if blocked:
         typer.echo(
             f"[{source}] Enrich BLOCKED. ok={ok}  err={err}  "
-            f"remaining={len(pairs) - ok - err}. Wait, then rerun."
+            f"remaining={len(job_ids) - ok - err}. Wait, then rerun."
         )
         return 2
-    typer.echo(f"[{source}] Enrich done. ok={ok}  err={err}  total={len(pairs)}")
+    typer.echo(f"[{source}] Enrich done. ok={ok}  err={err}  total={len(job_ids)}")
     return 0
 
 

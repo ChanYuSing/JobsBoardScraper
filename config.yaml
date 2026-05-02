@@ -1,43 +1,23 @@
 sources:
   jobsdb:
     enabled: true
-    url: "https://hk.jobsdb.com/jobs?daterange=3"
+    url: "https://hk.jobsdb.com/jobs?daterange=1"
     page_size: 32
 
-  jobspy_linkedin:
+  linkedin_guest:
     enabled: true
     location: "Hong Kong"
-    keywords: ["machine learning", "quant", "data"]          #  e.g. ["software engineer", "data analyst"]
-    hours_old: 72
-    results_wanted: 200
-    fetch_description: true
+    keywords: ["machine learning"]
+    hours_old: 720         # f_TPR filter — last N hours (720 = 30 days); set null to disable
+    job_type: null         # fulltime | parttime | contract | internship | null (all)
+    is_remote: null        # true = remote only | false = on-site | "hybrid" = hybrid | null = all
+    experience_level: null # 1=internship | 2=entry | 3=associate | 4=mid-senior | 5=director | 6=executive | [2,3,4] = multi | null = all
+    easy_apply: null       # true = LinkedIn Easy Apply only | null = all
+    sort_by_date: null     # true = f_SB2=R — most-recent postings first | null = LinkedIn default relevance sort
+    geo_id: null           # LinkedIn numeric geoId for precision (e.g. 102234630=HK); overrides location text
+    industry_id: null      # LinkedIn industry code: 96=technology | 4=software | 43=financial services | null = all
 
-  jobspy_indeed:
-    enabled: true
-    location: "Hong Kong"
-    country: "Hong Kong"
-    keywords: ["machine learning", "quant", "data"]
-    hours_old: 72
-    results_wanted: 200
-    fetch_description: true
 
-  jobspy_glassdoor:
-    enabled: false       # JobSpy Glassdoor currently fails for HK with `location not parsed` / HTTP 400.
-                         # Re-enable only after finding a Glassdoor location string JobSpy accepts.
-    location: "Hong Kong"
-    country: "Hong Kong"
-    keywords: ["machine learning", "quant", "data"]
-    hours_old: 72
-    results_wanted: 200
-    fetch_description: true
-
-  jobspy_ziprecruiter:
-    enabled: false        # ZipRecruiter has no HK presence; off by default
-    location: "Hong Kong"
-    keywords: []
-    hours_old: 72
-    results_wanted: 200
-    fetch_description: true
 
 scraper:
   request_timeout_seconds: 20

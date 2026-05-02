@@ -26,13 +26,18 @@ class JobsDBSourceCfg(SourceCfgBase):
     max_pages: int = 0           # 0 = no cap
 
 
-class JobSpySourceCfg(SourceCfgBase):
+class LinkedInCfg(SourceCfgBase):
     location: str = "Hong Kong"
     keywords: list[str] = Field(default_factory=list)
-    hours_old: int = 72
-    results_wanted: int = 200
-    fetch_description: bool = True
-    country: str | None = "Hong Kong"  # used by indeed/glassdoor
+    hours_old: int | None = 720          # f_TPR filter — None disables the filter
+    job_type: str | None = None          # fulltime | parttime | contract | internship
+    is_remote: bool | str | None = None           # True=remote(f_WT=2) | False=on-site(f_WT=1) | "hybrid"(f_WT=3) | None=all
+    experience_level: int | list[int] | None = None  # 1=internship..6=executive; list for multi-level e.g. [2,3,4]
+    easy_apply: bool | None = None                   # True = LinkedIn Easy Apply only
+    sort_by_date: bool | None = None                 # True = f_SB2=R (most-recent first)
+    geo_id: str | None = None                        # LinkedIn numeric geoId (overrides location text for precision)
+    industry_id: int | None = None                   # LinkedIn industry code, e.g. 96=technology, 4=software
+
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +71,8 @@ class Config(BaseModel):
 def _coerce_source(name: str, raw: dict[str, Any]):
     if name == "jobsdb":
         return JobsDBSourceCfg.model_validate(raw)
-    if name.startswith("jobspy_"):
-        return JobSpySourceCfg.model_validate(raw)
+    if name == "linkedin_guest":
+        return LinkedInCfg.model_validate(raw)
     return SourceCfgBase.model_validate(raw)
 
 

@@ -27,3 +27,5 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 jobboard = ["*.graphql", "*.sql"]
+"jobboard.sources.linkedin" = ["*.sql"]
+"jobboard.sources.jobsdb" = ["*.sql", "*.graphql"]
