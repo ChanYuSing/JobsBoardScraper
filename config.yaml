@@ -1,21 +1,32 @@
 sources:
   jobsdb:
     enabled: true
-    url: "https://hk.jobsdb.com/jobs?daterange=1"
+    keywords: null                       # string or list (list joined with space = AND search); null = all jobs
+    location: "Hong Kong SAR"            # free-text location label sent as GraphQL `where`; null = all locations
+    daterange: 1                         # days old: 1 | 3 | 7 | 14 | 31 | null = all time
+    work_arrangement: null               # on-site | hybrid | remote | [hybrid, remote] | null = all
+    work_type: null                      # full-time | part-time | contract | casual | internship | list | null = all
+    classification: null                 # industry ID: 6281=ICT | null = all industries
+    subclassification: null              # sub-industry ID; null = all
+    salary_range: null                   # e.g. "30000-60000" (monthly HKD); null = all
+    salary_type: null                    # Monthly | Annual | null = all
+    sort_mode: null                      # ListDate = most recent | Relevance = default | null = default
     page_size: 32
+    start_page: 1                        # resume pagination from this 1-based page (useful after a block)
+    max_pages: 0                         # cap total pages this run; 0 = no cap
 
   linkedin_guest:
     enabled: true
     location: "Hong Kong"
-    keywords: ["machine learning"]
-    hours_old: 720         # f_TPR filter — last N hours (720 = 30 days); set null to disable
-    job_type: null         # fulltime | parttime | contract | internship | null (all)
-    is_remote: null        # true = remote only | false = on-site | "hybrid" = hybrid | null = all
-    experience_level: null # 1=internship | 2=entry | 3=associate | 4=mid-senior | 5=director | 6=executive | [2,3,4] = multi | null = all
-    easy_apply: null       # true = LinkedIn Easy Apply only | null = all
-    sort_by_date: null     # true = f_SB2=R — most-recent postings first | null = LinkedIn default relevance sort
-    geo_id: null           # LinkedIn numeric geoId for precision (e.g. 102234630=HK); overrides location text
-    industry_id: null      # LinkedIn industry code: 96=technology | 4=software | 43=financial services | null = all
+    keywords: ["machine learning"]        # list (joined with space = AND search); must be set for LinkedIn as it doesn't allow blank keyword searches
+    hours_old: 720                        # f_TPR filter — last N hours (720 = 30 days); set null to disable
+    job_type: null                        # fulltime | parttime | contract | internship | null = all
+    is_remote: null                       # true = remote only | false = on-site | "hybrid" = hybrid | null = all
+    experience_level: null                # 1=internship | 2=entry | 3=associate | 4=mid-senior | 5=director | 6=executive | [2,3,4] = multi | null = all
+    easy_apply: null                      # true = LinkedIn Easy Apply only | null = all
+    sort_by_date: null                    # true = f_SB2=R — most-recent postings first | null = LinkedIn default relevance sort
+    geo_id: null                          # LinkedIn numeric geoId for precision (e.g. 102234630=HK); overrides location text
+    industry_id: null                      # LinkedIn industry code: 96=technology | 4=software | 43=financial services | null = all
 
 
 

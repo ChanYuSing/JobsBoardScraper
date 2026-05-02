@@ -18,12 +18,20 @@ class SourceCfgBase(BaseModel):
 
 
 class JobsDBSourceCfg(SourceCfgBase):
-    url: str
+    keywords: str | list[str] | None = None   # str or list joined with space (AND); null = all jobs
+    location: str | None = "Hong Kong SAR"
+    daterange: int | None = None               # days old: 1 | 3 | 7 | 14 | 31 | None = all time
+    work_arrangement: str | list[str] | None = None  # on-site | hybrid | remote
+    work_type: str | list[str] | None = None         # full-time | part-time | contract | casual | internship
+    classification: int | list[int] | None = None    # industry ID (e.g. 6281=ICT)
+    subclassification: int | list[int] | None = None
+    salary_range: str | None = None            # e.g. "30000-60000" (monthly HKD)
+    salary_type: str | None = None
+    sort_mode: str | None = None               # ListDate = most recent | Relevance = default
     page_size: int = 32
     # CLI overrides land here so the adapter sees a single source of truth.
-    daterange: int = 0           # 0 = use whatever the URL specifies
     start_page: int = 1
-    max_pages: int = 0           # 0 = no cap
+    max_pages: int = 0                         # 0 = no cap
 
 
 class LinkedInCfg(SourceCfgBase):

@@ -71,7 +71,7 @@ def fetch(
     ),
     daterange: int = typer.Option(
         0, "--daterange",
-        help="JobsDB only: override URL's dateRange (1, 3, 7, 14, 31). 0 = use URL.",
+        help="JobsDB only: override config's daterange (1, 3, 7, 14, 31). 0 = use config.",
     ),
     start_page: int = typer.Option(
         1, "--start-page",

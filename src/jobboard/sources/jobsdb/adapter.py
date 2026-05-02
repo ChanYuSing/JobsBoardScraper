@@ -30,7 +30,6 @@ from tenacity import (
 )
 
 from .models import JobsDBCard, JobsDBDetail
-from .url_parser import parse_search_url
 from .queries import JOB_SEARCH_V6, JOB_DETAILS
 
 log = logging.getLogger(__name__)
@@ -40,6 +39,58 @@ GRAPHQL_URL = "https://hk.jobsdb.com/graphql"
 # Defaults the SEEK backend expects but that aren't user-meaningful.
 _DEFAULT_INCLUDE       = ["seoData", "gptTargeting", "relatedSearches"]
 _DEFAULT_QUERY_HINTS   = ["spellingCorrection"]
+
+# Human-readable config values → GraphQL API codes.
+_WORK_ARRANGEMENT_MAP: dict[str, str] = {
+    "on-site": "1", "onsite": "1",
+    "hybrid":  "2",
+    "remote":  "3",
+}
+
+_WORK_TYPE_MAP: dict[str, str] = {
+    "full-time":  "242", "fulltime":  "242",
+    "part-time":  "243", "parttime":  "243",
+    "contract":   "244",
+    "casual":     "245",
+    "internship": "246",
+}
+
+
+def _build_params(cfg) -> dict[str, Any]:
+    """Convert a JobsDBSourceCfg into the GraphQL ``params`` dict for JobSearchV6."""
+    params: dict[str, Any] = {
+        "siteKey": "HK",
+        "locale":  "en-HK",
+        "channel": "web",
+        "source":  "FE_SERP",
+    }
+    if cfg.keywords:
+        params["keywords"] = (
+            " ".join(cfg.keywords) if isinstance(cfg.keywords, list) else cfg.keywords
+        )
+    if cfg.location:
+        params["where"] = cfg.location
+    if cfg.daterange:
+        params["dateRange"] = cfg.daterange
+    if cfg.work_arrangement is not None:
+        vals = [cfg.work_arrangement] if isinstance(cfg.work_arrangement, str) else list(cfg.work_arrangement)
+        params["workArrangement"] = [_WORK_ARRANGEMENT_MAP.get(v.lower(), v) for v in vals]
+    if cfg.work_type is not None:
+        vals = [cfg.work_type] if isinstance(cfg.work_type, str) else list(cfg.work_type)
+        params["workType"] = [_WORK_TYPE_MAP.get(v.lower(), v) for v in vals]
+    if cfg.classification is not None:
+        vals = [cfg.classification] if isinstance(cfg.classification, int) else list(cfg.classification)
+        params["classification"] = vals
+    if cfg.subclassification is not None:
+        vals = [cfg.subclassification] if isinstance(cfg.subclassification, int) else list(cfg.subclassification)
+        params["subclassification"] = vals
+    if cfg.salary_range:
+        params["salaryRange"] = cfg.salary_range
+    if cfg.salary_type:
+        params["salaryType"] = cfg.salary_type
+    if cfg.sort_mode:
+        params["sortMode"] = cfg.sort_mode
+    return params
 
 
 # ---------------------------------------------------------------------------
@@ -317,9 +368,7 @@ class JobsDBAdapter:
 
     def __init__(self, cfg, scraper_cfg) -> None:
         self._cfg = cfg
-        self._params = parse_search_url(cfg.url)
-        if cfg.daterange:
-            self._params["dateRange"] = cfg.daterange
+        self._params = _build_params(cfg)
         self._page_size  = cfg.page_size
         self._start_page = max(1, cfg.start_page or 1)
         self._max_pages  = cfg.max_pages or None
