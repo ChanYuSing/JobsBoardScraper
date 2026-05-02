@@ -106,13 +106,3 @@ FROM job_jobsdb;"
 Interpretation: 100% NULL after enrich → selector broken. 30–70% NULL → field
 is genuinely optional. 0% NULL → structural field, alert if it ever goes missing.
 
-## Research tools
-
-```powershell
-# Static + DB coverage probe (no network)
-python src/jobboard/sources/linkedin/probe_coverage.py
-python src/jobboard/sources/jobsdb/probe_coverage.py
-```
-
-See `DESIGN.md` for full API research findings, confirmed parameters, field
-coverage tables, and architectural decisions.
