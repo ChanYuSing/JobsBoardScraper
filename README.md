@@ -75,34 +75,41 @@ storage:
   sqlite_path: "data/jobs.sqlite"
 ```
 
-## Inspecting the database
+## Visualising results
+
+The easiest way is **Datasette** — a zero-config web UI that runs locally:
 
 ```powershell
-# Row counts per table
-sqlite3 data/jobs.sqlite "SELECT 'linkedin', COUNT(*) FROM job_linkedin UNION ALL SELECT 'jobsdb', COUNT(*) FROM job_jobsdb;"
-
-# Most recently seen jobs
-sqlite3 data/jobs.sqlite "SELECT job_id, title, company FROM job_linkedin ORDER BY last_seen_at DESC LIMIT 10;"
-sqlite3 data/jobs.sqlite "SELECT job_id, title, company FROM job_jobsdb  ORDER BY last_seen_at DESC LIMIT 10;"
-
-# NULL-rate audit (run after every enrich cycle)
-sqlite3 data/jobs.sqlite "
-SELECT
-    COUNT(*)                                                                    AS total,
-    100*SUM(CASE WHEN detail_fetched_at IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_not_enriched,
-    100*SUM(CASE WHEN seniority_level   IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_null_seniority,
-    100*SUM(CASE WHEN description_text  IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_null_description
-FROM job_linkedin;"
-
-sqlite3 data/jobs.sqlite "
-SELECT
-    COUNT(*)                                                                    AS total,
-    100*SUM(CASE WHEN detail_fetched_at IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_not_enriched,
-    100*SUM(CASE WHEN salary_label      IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_null_salary,
-    100*SUM(CASE WHEN description_text  IS NULL THEN 1 ELSE 0 END)/COUNT(*)    AS pct_null_description
-FROM job_jobsdb;"
+pip install datasette
+datasette data\jobs.sqlite
 ```
 
-Interpretation: 100% NULL after enrich → selector broken. 30–70% NULL → field
-is genuinely optional. 0% NULL → structural field, alert if it ever goes missing.
+Opens at `http://127.0.0.1:8001`. Browse tables, run SQL, filter and sort — no
+setup beyond the install. The `all_jobs` view combines both sources into one
+queryable table.
+
+For deeper analysis (charts, pandas DataFrames), open a Jupyter notebook:
+
+```powershell
+pip install jupyter pandas plotly
+jupyter lab
+```
+
+```python
+import sqlite3, pandas as pd, plotly.express as px
+
+db = sqlite3.connect("data/jobs.sqlite")
+
+# Listings per day
+df = pd.read_sql("SELECT DATE(first_seen_at) AS day, COUNT(*) AS n FROM all_jobs GROUP BY day ORDER BY day", db)
+px.line(df, x="day", y="n", title="New listings per day")
+
+# Top companies
+df2 = pd.read_sql("SELECT company, COUNT(*) AS n FROM job_jobsdb WHERE company IS NOT NULL GROUP BY company ORDER BY n DESC LIMIT 20", db)
+px.bar(df2, x="company", y="n", title="Top 20 companies – JobsDB")
+
+# LinkedIn seniority breakdown
+df3 = pd.read_sql("SELECT seniority_level, COUNT(*) AS n FROM job_linkedin WHERE seniority_level IS NOT NULL GROUP BY seniority_level ORDER BY n DESC", db)
+px.pie(df3, names="seniority_level", values="n", title="LinkedIn – Seniority levels")
+```
 
