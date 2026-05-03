@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Analyse — JobBoard{% endblock %}
+
+{% block content %}
+<p class="page-heading">Analyse Jobs</p>
+
+{% if flash %}
+<p class="{% if flash_type == 'error' %}analyse-error{% else %}flash-ok{% endif %}">{{ flash }}</p>
+{% endif %}
+
+<form method="post" id="analyse-form">
+
+  {# ── cv ── #}
+  <article>
+    <header><strong>Your CV</strong></header>
+    <textarea name="cv" rows="12" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
+  </article>
+
+  {# ── scoring fields ── #}
+  <article>
+    <header><strong>Scoring fields</strong></header>
+    <p class="source-hint">
+      Each field becomes a column in the results table. The name is used as both the JSON key and the column header (auto-formatted to <code>snake_case</code>). Type: int = 1–10 score, str = free text.
+    </p>
+    <div id="field-editor">
+      <div class="field-editor-header">
+        <span>Name (auto-formats to snake_case)</span><span>Type</span><span>Description</span><span></span>
+      </div>
+      {% for fd in field_defs %}
+      <div class="field-editor-row">
+        <input type="text" name="field_name[]" value="{{ fd.name }}" placeholder="e.g. job_fit" required oninput="formatFieldName(this)"/>
+        <select name="field_type[]">
+          <option value="int"{% if fd.type == 'int' %} selected{% endif %}>int</option>
+          <option value="str"{% if fd.type == 'str' %} selected{% endif %}>str</option>
+        </select>
+        <input type="text" name="field_desc[]" value="{{ fd.description }}" placeholder="What the AI should evaluate"/>
+        <button type="button" class="outline secondary field-remove-btn" onclick="removeFieldRow(this)">✕</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="outline secondary field-add-btn" onclick="addFieldRow()">+ Add field</button>
+  </article>
+
+  {# ── prompts ── #}
+  <article>
+    <header><strong>Prompts</strong></header>
+    <label>
+      System prompt
+      <textarea name="system_prompt" rows="4">{{ ai.system_prompt }}</textarea>
+    </label>
+  </article>
+
+  <div class="analyse-actions">
+    <button type="button" class="secondary outline" onclick="saveSettings(this)">Save settings</button>
+    <button type="button" class="outline" onclick="openPreview()">Preview prompts</button>
+  </div>
+
+</form>
+
+{# ── confirm delete dialog ── #}
+<dialog id="confirm-delete-dialog">
+  <article>
+    <header>
+      <strong>Delete scored data?</strong>
+    </header>
+    <p>Removing these fields will permanently delete all their scored data:</p>
+    <ul id="confirm-delete-list"></ul>
+    <p>This cannot be undone.</p>
+    <footer>
+      <button class="secondary outline" onclick="document.getElementById('confirm-delete-dialog').close()">Cancel</button>
+      <button id="confirm-delete-btn" onclick="saveSettings(null, true)">Delete and save</button>
+    </footer>
+  </article>
+</dialog>
+
+{# ── preview prompts dialog ── #}
+<dialog id="preview-dialog" class="preview-modal">
+  <article>
+    <header>
+      <strong>Prompt preview</strong>
+      <button class="close" onclick="document.getElementById('preview-dialog').close()">✕</button>
+    </header>
+    <h4>System prompt</h4>
+    <pre id="preview-system" class="preview-pre"></pre>
+    <h4>User prompt</h4>
+    <pre id="preview-job" class="preview-pre"></pre>
+    <footer>
+      <button onclick="document.getElementById('preview-dialog').close()">Close</button>
+    </footer>
+  </article>
+</dialog>
+
+{# ── per-job scored results ── #}
+{% if stored_results %}
+<article>
+  <header>
+    <strong>Scored Jobs</strong>
+    <span class="analyse-job-count">{{ stored_results|length }} stored</span>
+  </header>
+
+  <div{% if not stored_results %} hidden{% endif %}>
+    <table class="score-table">
+      <thead>
+        <tr>
+          {% for fd in field_defs %}
+          <th class="sortable-col" onclick="sortByCol({{ loop.index0 }})">{{ fd.label }}</th>
+          {% endfor %}
+          <th>Title</th>
+          <th>Company</th>
+        </tr>
+      </thead>
+      <tbody id="score-tbody">
+        {% for r in stored_results %}
+        <tr>
+          {% for fd in field_defs %}
+            {% set v = r.fields.get(fd.name) %}
+            <td>
+              {% if fd.type == 'int' and v is not none %}
+                <span class="score-chip {{ 'score-good' if v >= 7 else 'score-mid' if v >= 4 else 'score-poor' }}">{{ v }}/10</span>
+              {% else %}
+                {{ v if v is not none else '—' }}
+              {% endif %}
+            </td>
+          {% endfor %}
+          <td><a href="/jobs/{{ r.source }}/{{ r.job_id }}">{{ r.title or '(no title)' }}</a></td>
+          <td>{{ r.company or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</article>
+{% endif %}
+
+<script>
+
+// ── Field editor ──────────────────────────────────────────────────────────
+
+function addFieldRow() {
+  const editor = document.getElementById('field-editor');
+  const row = document.createElement('div');
+  row.className = 'field-editor-row';
+  row.innerHTML = ''
+    + '<input type="text" name="field_name[]" value="" placeholder="e.g. culture_fit" required oninput="formatFieldName(this)"/>'
+    + '<select name="field_type[]"><option value="int">int</option><option value="str">str</option></select>'
+    + '<input type="text" name="field_desc[]" value="" placeholder="What the AI should evaluate"/>'
+    + '<button type="button" class="outline secondary field-remove-btn" onclick="removeFieldRow(this)">✕</button>';
+  editor.appendChild(row);
+}
+
+function formatFieldName(input) {
+  const pos = input.selectionStart;
+  input.value = input.value.toLowerCase().replace(/[^a-z0-9_]/g, c => c === ' ' ? '_' : '');
+  input.setSelectionRange(pos, pos);
+}
+
+async function saveSettings(btn, confirmed = false) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const formData = new FormData(document.getElementById('analyse-form'));
+  if (confirmed) formData.set('confirmed', '1');
+  try {
+    const r = await fetch('/analyse/save', { method: 'POST', body: formData });
+    const data = await r.json();
+    if (data.confirm_required) {
+      const list = document.getElementById('confirm-delete-list');
+      list.innerHTML = data.fields.map(f => `<li><code>${f}</code></li>`).join('');
+      document.getElementById('confirm-delete-dialog').showModal();
+    } else if (data.error) {
+      alert('Save failed: ' + data.error);
+    } else {
+      window.location = '/analyse?flash=Settings+saved';
+    }
+  } catch(e) {
+    alert('Save failed: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save settings'; }
+  }
+}
+
+function removeFieldRow(btn) {
+  btn.closest('.field-editor-row').remove();
+}
+
+// ── Preview prompts ───────────────────────────────────────────────────────
+
+function openPreview() {
+  const btn = document.querySelector('button[onclick="openPreview()"]');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+
+  const formData = new FormData(document.getElementById('analyse-form'));
+  fetch('/analyse/preview', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        alert('Preview error: ' + data.error);
+        return;
+      }
+      const header = document.querySelector('#preview-dialog header strong');
+      header.textContent = 'Preview — ' + data.job_title + ' @ ' + data.job_company;
+      document.getElementById('preview-system').textContent = data.system || '(empty)';
+      document.getElementById('preview-job').textContent = data.user || '(empty)';
+      document.getElementById('preview-dialog').showModal();
+    })
+    .catch(err => alert('Preview failed: ' + err))
+    .finally(() => { btn.disabled = false; btn.textContent = 'Preview prompts'; });
+}
+
+
+// ── Table sort ────────────────────────────────────────────────────────────
+
+function sortByCol(colIndex) {
+  const tbody = document.getElementById('score-tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const asc = tbody.dataset.sortCol === String(colIndex) && tbody.dataset.sortDir === 'asc';
+  tbody.dataset.sortCol = colIndex;
+  tbody.dataset.sortDir = asc ? 'desc' : 'asc';
+  rows.sort((a, b) => {
+    const getVal = r => {
+      const cell = r.querySelectorAll('td')[colIndex];
+      if (!cell) return '';
+      const chip = cell.querySelector('.score-chip');
+      const text = chip ? chip.textContent : cell.textContent;
+      const n = parseFloat(text);
+      return isNaN(n) ? text.trim().toLowerCase() : n;
+    };
+    const va = getVal(a), vb = getVal(b);
+    if (va < vb) return asc ? 1 : -1;
+    if (va > vb) return asc ? -1 : 1;
+    return 0;
+  });
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+</script>
+{% endblock %}

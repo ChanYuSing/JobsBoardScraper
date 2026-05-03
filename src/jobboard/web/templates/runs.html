@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Runs — JobBoard{% endblock %}
+
+{% block content %}
+{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
+<p class="page-heading">Runs</p>
+
+<form method="get" action="/runs" class="filter-form">
+  <label>
+    Source
+    <select name="source">
+      <option value="">All sources</option>
+      {% for s in sources %}
+        <option value="{{ s }}" {% if filter_source == s %}selected{% endif %}>{{ src_label.get(s, s) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    Status
+    <select name="status">
+      <option value="">All statuses</option>
+      {% for st in ["ok","error","exhausted","running"] %}
+        <option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="filter-label--wide">
+    From date
+    <input type="date" name="date_from" value="{{ filter_date_from }}"/>
+  </label>
+  <div class="filter-btns">
+    <button type="submit">Filter</button>
+    <a href="/runs" role="button" class="secondary outline">Clear</a>
+  </div>
+</form>
+
+{% if runs %}
+<figure>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Source</th>
+      <th>Phase</th>
+      <th>Started</th>
+      <th>Duration</th>
+      <th>Status</th>
+      <th>Jobs</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in runs %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.source }}</td>
+      <td>{{ r.phase }}</td>
+      <td>{{ r.started_at[:16] if r.started_at else "—" }}</td>
+      <td>{% if r.duration_sec is not none %}{{ r.duration_sec | int }}s{% else %}—{% endif %}</td>
+      <td>
+        <span class="badge badge-{{ r.status }}">{{ r.status }}</span>
+      </td>
+      <td>{{ r.jobs_found if r.jobs_found is not none else "—" }}</td>
+      <td class="runs-error-cell">
+        {{ r.error[:120] ~ "…" if r.error and r.error|length > 120 else (r.error or "") }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</figure>
+{% else %}
+<p>No runs found.</p>
+{% endif %}
+{% endblock %}

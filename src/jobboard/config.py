@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -37,14 +37,25 @@ class JobsDBSourceCfg(SourceCfgBase):
 class LinkedInCfg(SourceCfgBase):
     location: str = "Hong Kong"
     keywords: list[str] = Field(default_factory=list)
-    hours_old: int | None = 720          # f_TPR filter — None disables the filter
-    job_type: str | None = None          # fulltime | parttime | contract | internship
-    is_remote: bool | str | None = None           # True=remote(f_WT=2) | False=on-site(f_WT=1) | "hybrid"(f_WT=3) | None=all
-    experience_level: int | list[int] | None = None  # 1=internship..6=executive; list for multi-level e.g. [2,3,4]
-    easy_apply: bool | None = None                   # True = LinkedIn Easy Apply only
-    sort_by_date: bool | None = None                 # True = f_SB2=R (most-recent first)
-    geo_id: str | None = None                        # LinkedIn numeric geoId (overrides location text for precision)
-    industry_id: int | None = None                   # LinkedIn industry code, e.g. 96=technology, 4=software
+    hours_old: int | None = 720
+    job_type: str | None = None
+    is_remote: bool | str | None = None
+    experience_level: int | list[int] | None = None
+    easy_apply: bool | None = None
+    sort_by_date: bool | None = None
+    geo_id: str | None = None
+    industry_id: int | None = None
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def coerce_keywords(cls, v: object) -> list[str]:
+        """Accept plain string from YAML (e.g. 'machine learning') and coerce to list."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            parts = [p.strip() for p in v.replace("\r", "").replace("\n", ",").split(",") if p.strip()]
+            return parts
+        return v  # already a list
 
 
 
@@ -62,6 +73,25 @@ class StorageCfg(BaseModel):
     sqlite_path: str = "data/jobs.sqlite"
 
 
+class SchedulerCfg(BaseModel):
+    cron: str | None = None          # single cron for all enabled sources e.g. "0 1 * * *"
+    order: list[str] | None = None   # explicit run order; null = use config.yaml source order
+    retry_delay_minutes: int = 60    # wait this long before retrying a failed run
+    max_retries: int = 3             # give up after this many consecutive retries
+
+
+class FieldCfg(BaseModel):
+    name: str
+    type: str = "int"
+    description: str = ""
+
+
+class AiCfg(BaseModel):
+    system_prompt: str = ""
+    cv: str = ""
+    fields: list[FieldCfg] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -71,6 +101,8 @@ class Config(BaseModel):
     sources: dict[str, Any] = Field(default_factory=dict)
     scraper: ScraperCfg = Field(default_factory=ScraperCfg)
     storage: StorageCfg = Field(default_factory=StorageCfg)
+    scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
+    ai: AiCfg = Field(default_factory=AiCfg)
 
     def enabled_sources(self) -> list[str]:
         return [n for n, s in self.sources.items() if getattr(s, "enabled", True)]
@@ -91,4 +123,5 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     sources_raw = raw.get("sources") or {}
     sources_typed = {n: _coerce_source(n, s or {}) for n, s in sources_raw.items()}
     raw["sources"] = sources_typed
+
     return Config.model_validate(raw)

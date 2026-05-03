@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Sources — JobBoard{% endblock %}
+
+{% block content %}
+{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
+
+<p class="page-heading">Sources</p>
+
+{% for name, values in sources.items() %}
+{% set fields = source_fields[name] %}
+{% set display_name = src_label.get(name, name) %}
+<article class="source-card">
+  <header class="source-card__header">
+    <span class="source-card__name">{{ display_name }}</span>
+    <form method="post" action="/sources/{{ name }}/run">
+      <button type="submit" class="secondary outline source-run-btn">▶ Run Now</button>
+    </form>
+  </header>
+
+  <form method="post" action="/sources/{{ name }}/save">
+    {# ── enabled toggle at top ── #}
+    <label class="source-toggle">
+      <input type="checkbox" name="enabled" value="true" role="switch"
+             {% if values.get('enabled','True') == 'True' %}checked{% endif %}/>
+      <span>Enabled</span>
+    </label>
+
+    <div class="source-fields-grid">
+      {% for f in fields %}
+        {% if f.key == 'enabled' %}
+          {# already rendered above #}
+        {% elif f.type == 'toggle' %}
+          <label class="source-toggle--inline">
+            <input type="checkbox" name="{{ f.key }}" value="true" role="switch"
+                   {% if values.get(f.key,'') == 'True' %}checked{% endif %}/>
+            {{ f.label }}
+          </label>
+        {% elif f.type == 'textarea' %}
+          {# tag-chip keyword input #}
+          <div class="source-field--full">
+            <p class="source-field__label">{{ f.label }}</p>
+            {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
+            <div class="tag-input" data-field="{{ f.key }}">
+              <input type="text" class="tag-input__text" placeholder="Type a keyword and press Enter…" autocomplete="off"/>
+            </div>
+            <textarea name="{{ f.key }}" hidden>{{ values.get(f.key, '') }}</textarea>
+          </div>
+        {% elif f.type == 'multiselect' %}
+          <div class="source-field--full">
+            <p class="source-field__label">{{ f.label }}</p>
+            {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
+            {% set cur_vals = values.get(f.key, '').split(',') %}
+            <div class="chip-row">
+              {% for val, lbl in f.options %}
+              <span class="chip-item">
+                <input type="checkbox" id="{{ f.key }}_{{ val }}" name="{{ f.key }}" value="{{ val }}"
+                       {% if val in cur_vals %}checked{% endif %}/>
+                <label for="{{ f.key }}_{{ val }}">{{ lbl }}</label>
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% elif f.type == 'select' %}
+          <label>
+            {{ f.label }}
+            {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
+            <select name="{{ f.key }}">
+              {% for opt in f.options %}
+                <option value="{{ opt }}"
+                        {% if values.get(f.key,'') == opt %}selected{% endif %}>
+                  {{ opt if opt else '— all —' }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+        {% else %}
+          <label>
+            {{ f.label }}
+            {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
+            <input type="{{ f.type }}" name="{{ f.key }}"
+                   value="{{ values.get(f.key, '') }}"/>
+          </label>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <button type="submit" class="source-save-btn">Save</button>
+  </form>
+</article>
+{% endfor %}
+
+<script>
+(function () {
+  document.querySelectorAll('.tag-input').forEach(function (widget) {
+    var fieldName = widget.dataset.field;
+    var hidden    = widget.parentElement.querySelector('textarea[name="' + fieldName + '"]');
+    var textInput = widget.querySelector('.tag-input__text');
+    if (!hidden || !textInput) return;
+
+    function syncHidden() {
+      var chips = widget.querySelectorAll('.tag-input__chip');
+      hidden.value = Array.from(chips).map(function (c) { return c.dataset.value; }).join('\n');
+    }
+
+    function removeChip(chip) {
+      chip.remove();
+      syncHidden();
+    }
+
+    function addTag(val) {
+      val = val.trim();
+      if (!val) return;
+      var existing = Array.from(widget.querySelectorAll('.tag-input__chip'))
+                          .map(function (c) { return c.dataset.value.toLowerCase(); });
+      if (existing.indexOf(val.toLowerCase()) !== -1) return;
+
+      var chip = document.createElement('span');
+      chip.className   = 'tag-input__chip';
+      chip.dataset.value = val;
+
+      var label = document.createTextNode(val + '\u00a0');
+      var btn   = document.createElement('button');
+      btn.type      = 'button';
+      btn.className = 'tag-input__remove';
+      btn.setAttribute('aria-label', 'Remove ' + val);
+      btn.textContent = '\u00d7';
+      btn.addEventListener('click', function () { removeChip(chip); });
+
+      chip.appendChild(label);
+      chip.appendChild(btn);
+      widget.insertBefore(chip, textInput);
+      syncHidden();
+    }
+
+    /* initialise from existing saved value */
+    (hidden.value || '').split('\n').forEach(function (v) { if (v.trim()) addTag(v.trim()); });
+
+    textInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
+    });
+    textInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        addTag(textInput.value);
+        textInput.value = '';
+      } else if (e.key === 'Backspace' && textInput.value === '') {
+        var chips = widget.querySelectorAll('.tag-input__chip');
+        if (chips.length) removeChip(chips[chips.length - 1]);
+      }
+    });
+
+    /* clicking anywhere in the widget focuses the text input */
+    widget.addEventListener('click', function (e) {
+      if (e.target !== textInput) textInput.focus();
+    });
+  });
+})();
+</script>
+{% endblock %}

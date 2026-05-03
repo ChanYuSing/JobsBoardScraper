@@ -1,0 +1,536 @@
+﻿{% extends "base.html" %}
+{% block title %}Jobs — JobBoard{% endblock %}
+
+{% block content %}
+{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
+{# maps column key → popup id for filterable columns #}
+{% set popup_for = {
+  'title':            'fp-keyword',
+  'company':          'fp-company',
+  'location':         'fp-location',
+  'work_type':        'fp-work_type',
+  'work_arrangement': 'fp-arrangement',
+  'date_posted':      'fp-date_posted',
+  'source':           'fp-source',
+  'classification':   'fp-classification'
+} %}
+{# active filter per column key — truthy = filter set #}
+{% set filter_active = {
+  'title':            f_keyword,
+  'company':          f_company,
+  'location':         f_location_kw,
+  'work_type':        f_work_type,
+  'work_arrangement': f_arrangement,
+  'date_posted':      (f_date_from or f_date_to),
+  'source':           f_source,
+  'classification':   f_classification
+} %}
+
+{# ══ COLUMN PICKER ══ #}
+<form method="get" action="/jobs" class="col-picker-form">
+  <input type="hidden" name="keyword"        value="{{ f_keyword }}"/>
+  <input type="hidden" name="company"        value="{{ f_company }}"/>
+  <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
+  <input type="hidden" name="source"         value="{{ f_source }}"/>
+  {% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}
+  <input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>
+  <input type="hidden" name="classification" value="{{ f_classification }}"/>
+  <input type="hidden" name="date_from"      value="{{ f_date_from }}"/>
+  <input type="hidden" name="date_to"        value="{{ f_date_to }}"/>
+  <input type="hidden" name="triage"         value="{{ f_triage }}"/>
+  <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
+  <input type="hidden" name="sort_dir"       value="{{ f_sort_dir }}"/>
+  {% if page_size != 15 %}<input type="hidden" name="page_size" value="{{ page_size }}"/>{% endif %}
+  <div class="col-picker">
+    <span class="col-picker__label">Columns</span>
+    <div class="chip-row">
+      {% for label, key in picker_cols %}
+      <span class="chip-item" draggable="true">
+        <input type="checkbox" id="col_{{ key }}" name="col" value="{{ key }}"
+               {% if key in active_cols %}checked{% endif %}/>
+        <label for="col_{{ key }}">{{ label }}</label>
+      </span>
+      {% endfor %}
+    </div>
+    <button type="submit" class="col-picker__apply secondary outline">Apply</button>
+  </div>
+</form>
+
+{# ══ STATUS BAR ══ #}
+<div class="status-bar">
+  <span class="status-bar__count">
+    {{ total }} result{{ 's' if total != 1 }}
+    {% if active_filter_count > 0 %}&ensp;·&ensp;<strong>{{ active_filter_count }} filter{{ 's' if active_filter_count != 1 }} active</strong>{% endif %}
+  </span>
+  {% if active_filter_count > 0 %}
+    <a href="/jobs?cols={{ cols_param }}&triage={{ f_triage }}&sort_by={{ f_sort_by }}&sort_dir={{ f_sort_dir }}" class="status-bar__clear">✕ Clear filters</a>
+  {% endif %}
+</div>
+
+{# ══ MAIN FORM (table + popups) ══ #}
+<form method="get" action="/jobs" id="filter-form">
+  <input type="hidden" name="cols"     value="{{ cols_param }}"/>
+  <input type="hidden" name="sort_by"  value="{{ f_sort_by }}"  id="hid-sort-by"/>
+  <input type="hidden" name="sort_dir" value="{{ f_sort_dir }}" id="hid-sort-dir"/>
+
+  {# keep filters alive for hidden columns #}
+  {% if 'title'            not in active_cols %}<input type="hidden" name="keyword"        value="{{ f_keyword }}"/>{% endif %}
+  {% if 'company'          not in active_cols %}<input type="hidden" name="company"        value="{{ f_company }}"/>{% endif %}
+  {% if 'location'         not in active_cols %}<input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>{% endif %}
+  {% if 'work_type'        not in active_cols %}{% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}{% endif %}
+  {% if 'work_arrangement' not in active_cols %}<input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>{% endif %}
+  {% if 'source'           not in active_cols %}<input type="hidden" name="source"         value="{{ f_source }}"/>{% endif %}
+  {% if 'classification'   not in active_cols %}<input type="hidden" name="classification" value="{{ f_classification }}"/>{% endif %}
+  {% if 'date_posted'      not in active_cols %}
+    <input type="hidden" name="date_from" value="{{ f_date_from }}"/>
+    <input type="hidden" name="date_to"   value="{{ f_date_to }}"/>
+  {% endif %}
+
+  {# ── TABLE ── #}
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        {% for label, key in ordered_cols %}
+        <th>
+          <div class="th-inner">
+            {# Label: filter trigger if filterable, sort trigger if sortable-only, plain span otherwise #}
+            {% if key in popup_for %}
+              <button type="button"
+                      class="th-filter-btn{% if filter_active[key] %} th-filter-btn--active{% endif %}"
+                      data-popup="{{ popup_for[key] }}">{{ label }}</button>
+            {% elif key in sortable_cols %}
+              <button type="button"
+                      class="th-filter-btn{% if f_sort_by == key %} th-filter-btn--active{% endif %}"
+                      data-sort-col="{{ key }}">{{ label }}{% if f_sort_by == key %} {{ '↑' if f_sort_dir == 'asc' else '↓' }}{% endif %}</button>
+            {% else %}
+              <button type="button" class="th-filter-btn" disabled>{{ label }}</button>
+            {% endif %}
+          </div>
+        </th>
+        {% endfor %}
+        {# Status column #}
+        <th class="action-cell action-cell--sticky">
+          <div class="th-inner">
+            <button type="button"
+                    class="th-filter-btn{% if f_triage %} th-filter-btn--active{% endif %}"
+                    data-popup="fp-triage">Status</button>
+          </div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        {% for label, key in ordered_cols %}
+          <td>
+            {% if key == "title" %}
+              <a href="/jobs/{{ job.source }}/{{ job.job_id }}"
+                 class="job-title-link"
+                 data-panel-src="{{ job.source }}"
+                 data-panel-id="{{ job.job_id }}">{{ job[key] or "—" }}</a>
+            {% elif key == "source" %}
+              {{ src_label.get(job[key], job[key]) or "—" }}
+            {% elif key in ("date_posted", "first_seen_at") %}
+              {{ job[key][:10] if job[key] else "—" }}
+            {% elif key == "url" %}
+              {% if job[key] %}<a href="{{ job[key] }}" target="_blank" rel="noopener noreferrer">↗</a>{% else %}—{% endif %}
+            {% elif key == "teaser" %}
+              <span class="cell-truncate" title="{{ job[key] or '' }}">{{ job[key] or "—" }}</span>
+            {% else %}
+              {{ job[key] or "—" }}
+            {% endif %}
+          </td>
+        {% endfor %}
+        <td class="action-cell action-cell--sticky">
+          <form method="post" action="/jobs/{{ job.source }}/{{ job.job_id }}/mark">
+            <input type="hidden" name="keyword"        value="{{ f_keyword }}"/>
+            <input type="hidden" name="filter_source"  value="{{ f_source }}"/>
+            <input type="hidden" name="date_from"      value="{{ f_date_from }}"/>
+            <input type="hidden" name="date_to"        value="{{ f_date_to }}"/>
+            {% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}
+            <input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>
+            <input type="hidden" name="company"        value="{{ f_company }}"/>
+            <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
+            <input type="hidden" name="classification" value="{{ f_classification }}"/>
+            <input type="hidden" name="triage"         value="{{ f_triage }}"/>
+            <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
+            <input type="hidden" name="sort_dir"       value="{{ f_sort_dir }}"/>
+            <input type="hidden" name="cols"           value="{{ cols_param }}"/>
+            <input type="hidden" name="page"           value="{{ page }}"/>
+            {% if page_size != 15 %}<input type="hidden" name="page_size" value="{{ page_size }}"/>{% endif %}
+            {% if job.triage_status == 'saved' %}
+              <span class="triage-badge triage-badge--saved">★ Saved</span>
+              <button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Unsave">↩</button>
+            {% elif job.triage_status == 'dismissed' %}
+              <span class="triage-badge triage-badge--dismissed">✕ Dismissed</span>
+              <button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Reset">↩</button>
+            {% else %}
+              <button type="submit" name="status" value="saved" class="triage-btn triage-btn--save">Save</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if not jobs %}
+  <p class="no-results">No jobs match the current filters.</p>
+  {% endif %}
+
+  {% if total_pages > 1 or total > 10 %}
+  <div class="pagination">
+    {% if page > 1 %}<a href="/jobs?{{ page_qs }}&page={{ page - 1 }}" role="button" class="secondary outline">← Prev</a>{% endif %}
+    <span class="pagination__info">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a href="/jobs?{{ page_qs }}&page={{ page + 1 }}" role="button" class="secondary outline">Next →</a>{% endif %}
+    <form method="get" action="/jobs" class="pagination__jump">
+      {% for k, v in request.query_params.multi_items() if k not in ('page',) %}
+        <input type="hidden" name="{{ k }}" value="{{ v }}"/>
+      {% endfor %}
+      <label class="pagination__jump-label">Go to
+        <input type="number" name="page" value="{{ page }}" min="1" max="{{ total_pages }}"
+               class="pagination__jump-input"/>
+      </label>
+      <button type="submit" class="secondary outline pagination__jump-btn">Go</button>
+    </form>
+    <form method="get" action="/jobs" class="pagination__perpage">
+      {% for k, v in request.query_params.multi_items() if k not in ('page', 'page_size') %}
+        <input type="hidden" name="{{ k }}" value="{{ v }}"/>
+      {% endfor %}
+      <label class="pagination__perpage-label">Per page
+        <input type="number" name="page_size" value="{{ page_size }}" min="1"
+               class="pagination__perpage-input"/>
+      </label>
+      <button type="submit" class="secondary outline pagination__jump-btn">Set</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# ═══════════════ FILTER POPUPS ═══════════════ #}
+
+  {% if 'title' in active_cols %}
+  <div id="fp-keyword" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Keyword</p>
+    <input type="search" name="keyword" value="{{ f_keyword }}" placeholder="Search title, description…" autocomplete="off"/>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_keyword %}<button type="button" class="col-filter__clear" data-clear="keyword">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'company' in active_cols %}
+  <div id="fp-company" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Company</p>
+    <input type="search" name="company" value="{{ f_company }}" placeholder="Partial match…" autocomplete="off"/>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_company %}<button type="button" class="col-filter__clear" data-clear="company">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'location' in active_cols %}
+  <div id="fp-location" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Location</p>
+    <input type="search" name="location_kw" value="{{ f_location_kw }}" placeholder="Partial match…" autocomplete="off"/>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_location_kw %}<button type="button" class="col-filter__clear" data-clear="location_kw">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'work_type' in active_cols %}
+  <div id="fp-work_type" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Work type</p>
+    <div class="col-filter__checklist">
+      {% for wt in filter_options.work_type %}
+      <label class="col-filter__check-item">
+        <input type="checkbox" name="work_type" value="{{ wt }}" {% if wt in f_work_type %}checked{% endif %}/>
+        {{ wt }}
+      </label>
+      {% endfor %}
+    </div>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_work_type %}<button type="button" class="col-filter__clear" data-clear="work_type_multi">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'work_arrangement' in active_cols %}
+  <div id="fp-arrangement" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Arrangement</p>
+    <select name="arrangement">
+      <option value="">All</option>
+      {% for a in filter_options.arrangement %}
+        <option value="{{ a }}" {% if f_arrangement == a %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_arrangement %}<button type="button" class="col-filter__clear" data-clear="arrangement">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'date_posted' in active_cols %}
+  <div id="fp-date_posted" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Date posted</p>
+    <div class="col-filter__date-row">
+      <label>From<input type="date" name="date_from" value="{{ f_date_from }}"/></label>
+      <label>To<input type="date" name="date_to" value="{{ f_date_to }}"/></label>
+    </div>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_date_from or f_date_to %}<button type="button" class="col-filter__clear" data-clear="date_range">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'source' in active_cols %}
+  <div id="fp-source" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Source</p>
+    <select name="source">
+      <option value="">All sources</option>
+      {% for s in filter_options.source %}
+        <option value="{{ s }}" {% if f_source == s %}selected{% endif %}>{{ src_label.get(s, s) }}</option>
+      {% endfor %}
+    </select>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_source %}<button type="button" class="col-filter__clear" data-clear="source">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'classification' in active_cols %}
+  <div id="fp-classification" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Classification</p>
+    <select name="classification">
+      <option value="">All</option>
+      {% for c in filter_options.classification %}
+        <option value="{{ c }}" {% if f_classification == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_classification %}<button type="button" class="col-filter__clear" data-clear="classification">Clear</button>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div id="fp-triage" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Status</p>
+    <select name="triage">
+      {% for val, lbl in [("","All"),("new","New only"),("saved","Saved"),("dismissed","Dismissed")] %}
+        <option value="{{ val }}" {% if f_triage == val %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+    </div>
+  </div>
+
+</form>
+
+{# ── JOB SLIDE-IN PANEL ── #}
+<div class="jpanel-overlay" id="jpanel-overlay"></div>
+<div class="jpanel" id="jpanel" role="dialog" aria-modal="true" aria-label="Job detail">
+  <div class="jpanel__loading" id="jpanel-loading">Loading…</div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('filter-form');
+  if (!form) return;
+
+  /* ── popup open/close ── */
+  function closeAll() {
+    document.querySelectorAll('.col-filter__popup').forEach(function(p) { p.hidden = true; });
+    document.querySelectorAll('.th-filter-btn').forEach(function(b) { b.setAttribute('aria-expanded','false'); });
+  }
+  function openPopup(btn, popup) {
+    popup.hidden = false;
+    btn.setAttribute('aria-expanded','true');
+    var rect = btn.getBoundingClientRect();
+    var pw = 220;
+    var left = rect.left + window.scrollX;
+    if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
+    popup.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    popup.style.left = Math.max(8, left) + 'px';
+    var first = popup.querySelector('input:not([type=checkbox]),select');
+    if (first) first.focus();
+  }
+  document.querySelectorAll('.th-filter-btn[data-popup]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var popup = document.getElementById(btn.dataset.popup);
+      if (!popup) return;
+      var wasOpen = !popup.hidden;
+      closeAll();
+      if (!wasOpen) openPopup(btn, popup);
+    });
+  });
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.col-filter__popup') && !e.target.closest('.th-filter-btn')) closeAll();
+  });
+  document.addEventListener('scroll', closeAll, true);
+
+  /* ── sort-only column header buttons ── */
+  document.querySelectorAll('.th-filter-btn[data-sort-col]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var col = btn.dataset.sortCol;
+      var sortByEl  = document.getElementById('hid-sort-by');
+      var sortDirEl = document.getElementById('hid-sort-dir');
+      if (sortByEl.value === col) {
+        sortDirEl.value = sortDirEl.value === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortByEl.value  = col;
+        sortDirEl.value = 'desc';
+      }
+      form.submit();
+    });
+  });
+
+  /* ── clear buttons ── */
+  document.querySelectorAll('.col-filter__clear').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var name = btn.dataset.clear;
+      if (name === 'work_type_multi') {
+        form.querySelectorAll('[name="work_type"]').forEach(function(el) { el.checked = false; });
+      } else if (name === 'date_range') {
+        ['date_from','date_to'].forEach(function(n) {
+          var el = form.querySelector('[name="' + n + '"]');
+          if (el) el.value = '';
+        });
+      } else {
+        var el = form.querySelector('[name="' + name + '"]');
+        if (el) el.value = '';
+      }
+      form.submit();
+    });
+  });
+
+
+  /* ── slide-in job panel ── */
+  var overlay  = document.getElementById('jpanel-overlay');
+  var panel    = document.getElementById('jpanel');
+  var currentSrc = null, currentId = null;
+
+  function openPanel(src, id) {
+    if (currentSrc === src && currentId === id) {
+      // already loaded — just show
+      overlay.classList.add('is-open');
+      panel.classList.add('is-open');
+      return;
+    }
+    currentSrc = src; currentId = id;
+    // reset to loading state
+    panel.innerHTML = '<div class="jpanel__loading" id="jpanel-loading">Loading\u2026</div>';
+    overlay.classList.add('is-open');
+    panel.classList.add('is-open');
+
+    fetch('/jobs/' + src + '/' + id + '/panel')
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        panel.innerHTML = html;
+        // wire close button
+        var cb = panel.querySelector('#jpanel-close');
+        if (cb) cb.addEventListener('click', closePanel);
+        // wire triage buttons
+        var triageEl = panel.querySelector('.jpanel__triage');
+        if (triageEl) {
+          triageEl.querySelectorAll('.triage-btn[data-status]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var status = btn.dataset.status;
+              fetch('/jobs/' + triageEl.dataset.source + '/' + triageEl.dataset.jobId + '/mark-ajax', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({status: status})
+              }).then(function(r) { return r.json(); })
+                .then(function(data) {
+                  // refresh triage section in panel
+                  currentSrc = null; // force reload next open
+                  openPanel(src, id);
+                  // update the sticky status cell in the table row
+                  var tr = document.querySelector('[data-panel-src="'+src+'"][data-panel-id="'+id+'"]')?.closest('tr');
+                  if (tr) {
+                    var rowForm = tr.querySelector('.action-cell--sticky form');
+                    if (rowForm) {
+                      rowForm.querySelectorAll('.triage-badge, .triage-btn').forEach(function(el) { el.remove(); });
+                      if (data.status === 'saved') {
+                        rowForm.insertAdjacentHTML('beforeend', '<span class="triage-badge triage-badge--saved">\u2605 Saved</span><button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Unsave">\u21a9</button>');
+                      } else if (data.status === 'dismissed') {
+                        rowForm.insertAdjacentHTML('beforeend', '<span class="triage-badge triage-badge--dismissed">\u2715 Dismissed</span><button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Reset">\u21a9</button>');
+                      } else {
+                        rowForm.insertAdjacentHTML('beforeend', '<button type="submit" name="status" value="saved" class="triage-btn triage-btn--save">Save</button>');
+                      }
+                    }
+                  }
+                });
+            });
+          });
+        }
+      })
+      .catch(function() {
+        panel.innerHTML = '<div class="jpanel__loading">Failed to load.</div>';
+      });
+  }
+
+  function closePanel() {
+    overlay.classList.remove('is-open');
+    panel.classList.remove('is-open');
+  }
+
+  // title link clicks
+  document.querySelectorAll('.job-title-link[data-panel-src]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      openPanel(a.dataset.panelSrc, a.dataset.panelId);
+    });
+  });
+
+  // close on overlay click or ESC
+  overlay.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    // close panel first if open, otherwise close any open popup
+    if (panel.classList.contains('is-open')) closePanel();
+    else closeAll();
+  });
+
+  /* ── column chip drag-to-reorder ── */
+  (function() {
+    var chipRow = document.querySelector('.chip-row');
+    if (!chipRow) return;
+    var dragged = null;
+    chipRow.addEventListener('dragstart', function(e) {
+      dragged = e.target.closest('.chip-item[draggable]');
+      if (dragged) dragged.classList.add('dragging');
+    });
+    chipRow.addEventListener('dragend', function() {
+      if (dragged) dragged.classList.remove('dragging');
+      dragged = null;
+    });
+    chipRow.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      if (!dragged) return;
+      var over = e.target.closest('.chip-item[draggable]');
+      if (!over || over === dragged) return;
+      var rect = over.getBoundingClientRect();
+      if (e.clientX < rect.left + rect.width / 2) {
+        chipRow.insertBefore(dragged, over);
+      } else {
+        chipRow.insertBefore(dragged, over.nextSibling);
+      }
+    });
+    chipRow.addEventListener('drop', function(e) { e.preventDefault(); });
+  })();
+
+})();
+</script>
+{% endblock %}

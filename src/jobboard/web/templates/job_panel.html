@@ -1,0 +1,67 @@
+{# Rendered as a bare HTML fragment — no base template — fetched via JS for the slide-in panel #}
+{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
+<div class="jpanel__header">
+  <div class="jpanel__title-row">
+    <h3 class="jpanel__title">{{ job.title or "Untitled" }}</h3>
+    <button type="button" class="jpanel__close" id="jpanel-close" aria-label="Close">✕</button>
+  </div>
+  {% if job.company %}
+  <p class="jpanel__company">{{ job.company }}</p>
+  {% endif %}
+  <div class="jpanel__meta-row">
+    {% if posted_ago %}<span class="jpanel__posted">Posted {{ posted_ago }}</span>{% endif %}
+    <span class="badge badge-{{ job.source }}">{{ src_label.get(job.source, job.source) }}</span>
+    <span class="badge badge-{{ job.triage_status }}" id="jpanel-status-badge">{{ job.triage_status }}</span>
+    {% if job.url %}
+      <a href="{{ job.url }}" target="_blank" rel="noopener" class="jpanel__apply-link">Apply ↗</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="jpanel__body">
+  {# ── left: metadata + triage ── #}
+  <aside class="jpanel__meta">
+    <dl class="jpanel__dl">
+      {% for label, value in [
+        ("Location",       job.location),
+        ("Salary",         job.salary),
+        ("Work type",      job.work_type),
+        ("Arrangement",    job.work_arrangement),
+        ("Classification", job.classification),
+        ("Subcat.",        job.subclassification),
+        ("Date posted",    job.date_posted[:10] if job.date_posted else None),
+        ("First seen",     job.first_seen_at[:10] if job.first_seen_at else None),
+      ] %}
+        {% if value %}
+          <dt>{{ label }}</dt>
+          <dd>{{ value }}</dd>
+        {% endif %}
+      {% endfor %}
+    </dl>
+
+    <div class="jpanel__triage" data-source="{{ job.source }}" data-job-id="{{ job.job_id }}">
+      {% if job.triage_status != "saved" %}
+        <button type="button" class="triage-btn triage-btn--save"     data-status="saved">Save</button>
+      {% endif %}
+      {% if job.triage_status != "dismissed" %}
+        <button type="button" class="triage-btn triage-btn--dismiss"  data-status="dismissed">Dismiss</button>
+      {% endif %}
+      {% if job.triage_status != "new" %}
+        <button type="button" class="triage-btn triage-btn--reset"    data-status="new">↩ Reset</button>
+      {% endif %}
+    </div>
+  </aside>
+
+  {# ── right: description ── #}
+  <div class="jpanel__desc">
+    {% if job.description_html %}
+      <div class="jpanel__desc-html">{{ job.description_html | safe }}</div>
+    {% elif job.description_text %}
+      <pre class="jpanel__desc-pre">{{ job.description_text }}</pre>
+    {% elif job.teaser %}
+      <p>{{ job.teaser }}</p>
+    {% else %}
+      <p class="jpanel__empty">No description available yet.</p>
+    {% endif %}
+  </div>
+</div>
