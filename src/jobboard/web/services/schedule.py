@@ -122,30 +122,6 @@ def save_scraper(
             yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
 
-def get_last_runs(conn) -> dict[str, dict[str, Any]]:
-    """Return the most recent scheduler_run row per source."""
-    rows = conn.execute(
-        """
-        SELECT source, phase, started_at, status, jobs_found, error
-        FROM scheduler_run
-        WHERE id IN (
-            SELECT MAX(id) FROM scheduler_run GROUP BY source
-        )
-        ORDER BY source
-        """
-    ).fetchall()
-    result = {}
-    for r in rows:
-        result[r[0]] = {
-            "phase": r[1],
-            "started_at": r[2],
-            "status": r[3],
-            "jobs_found": r[4],
-            "error": r[5],
-        }
-    return result
-
-
 def get_ai_auto_score(config_path: str) -> bool:
     return load_config(config_path).ai.auto_score
 

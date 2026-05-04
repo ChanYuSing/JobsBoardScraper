@@ -81,7 +81,17 @@ def run_all_now():
     from ..deps import get_config
 
     cfg = get_config()
-    sources = cfg.scheduler.order or cfg.enabled_sources()
+    enabled = set(cfg.enabled_sources())
+    order = cfg.scheduler.order
+    if order is not None:
+        sources = [s for s in order if s in enabled]
+    else:
+        sources = cfg.enabled_sources()
+    if not sources:
+        return RedirectResponse(
+            "/schedule?flash=No+enabled+sources+to+run.&flash_type=error",
+            status_code=303,
+        )
     enqueue_run(sources, CONFIG_PATH, cfg.storage.sqlite_path, phases=None)
     return RedirectResponse(
         "/schedule?flash=Run+queued+for+all+sources.+Check+Runs+page+for+status.",
@@ -123,8 +133,14 @@ def toggle_enabled(request: Request):
 
 @router.post("/schedule/kill-run")
 def kill_run():
-    from ...scheduler import _cancel_event
+    from ...scheduler import _cancel_event, _cancel_file
+    from ..deps import get_config
     _cancel_event.set()
+    try:
+        cfg = get_config()
+        _cancel_file(cfg.storage.sqlite_path).touch()
+    except Exception:
+        pass
     return RedirectResponse(
         "/schedule?flash=Kill+signal+sent.+Run+will+stop+at+the+next+checkpoint.",
         status_code=303,

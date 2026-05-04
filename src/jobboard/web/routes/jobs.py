@@ -199,7 +199,10 @@ async def mark_ajax(
 ):
     body = await request.json()
     status = body.get("status", "new")
-    mark_job(conn, source, job_id, status)
+    try:
+        mark_job(conn, source, job_id, status)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"status": status})
 
 
@@ -227,7 +230,12 @@ async def mark(
     cols           = str(form_data.get("cols", ""))
     page_s         = str(form_data.get("page", "1"))
     page_size_s    = str(form_data.get("page_size", "15"))
-    mark_job(conn, source, job_id, status)
+    try:
+        mark_job(conn, source, job_id, status)
+    except ValueError as exc:
+        return RedirectResponse(
+            f"/jobs?flash={str(exc)[:120]}&flash_type=error", status_code=303
+        )
     scalar: dict[str, object] = {k: v for k, v in {
         "keyword": keyword, "source": filter_source,
         "date_from": date_from, "date_to": date_to,

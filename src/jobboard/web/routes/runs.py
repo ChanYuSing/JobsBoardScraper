@@ -103,11 +103,13 @@ def progress_stream():
             time.sleep(2)
             try:
                 conn = db_connect(cfg.storage.sqlite_path)
-                rows = conn.execute(
-                    "SELECT id, status, jobs_found, jobs_total, started_at"
-                    " FROM scheduler_run WHERE status IN ('running', 'queued')"
-                ).fetchall()
-                conn.close()
+                try:
+                    rows = conn.execute(
+                        "SELECT id, status, jobs_found, jobs_total, started_at"
+                        " FROM scheduler_run WHERE status IN ('running', 'queued')"
+                    ).fetchall()
+                finally:
+                    conn.close()
                 if rows:
                     payload = {
                         str(r[0]): {

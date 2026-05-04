@@ -80,7 +80,7 @@ class StorageCfg(BaseModel):
 
 
 class SchedulerCfg(BaseModel):
-    enabled: bool = True             # set False to pause cron without losing the schedule
+    enabled: bool = False            # set True to activate cron; False = paused
     cron: str | None = None          # single cron for all enabled sources e.g. "0 1 * * *"
     order: list[str] | None = None   # explicit run order; null = use config.yaml source order
 

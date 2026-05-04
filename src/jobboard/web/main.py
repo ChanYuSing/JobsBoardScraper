@@ -32,10 +32,12 @@ async def lifespan(app: FastAPI):
         _scheduler = build_scheduler(cfg)
         _scheduler.start()
     app.state.scheduler = _scheduler
-    start_queue_worker()
+    worker = start_queue_worker()
     yield
     if _scheduler:
         _scheduler.shutdown(wait=False)
+    from ..scheduler import _run_queue
+    _run_queue.put(None)   # signal the queue worker to exit cleanly
 
 
 app = FastAPI(title="JobBoard", lifespan=lifespan)

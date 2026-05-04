@@ -170,10 +170,8 @@ async def analyse_score(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Enqueue a score-all task on the shared run queue.  Returns immediately."""
-    with _score_lock:
-        if _score_state["running"]:
-            return JSONResponse({"error": "Scoring already in progress."}, status_code=409)
-
+    # Read form data BEFORE acquiring the lock so the async yield happens
+    # outside the critical section, eliminating the TOCTOU race.
     form = await request.form()
     rescore = form.get("rescore") == "1"
 
@@ -182,6 +180,8 @@ async def analyse_score(
         return JSONResponse({"error": "No scoring fields defined."}, status_code=400)
 
     with _score_lock:
+        if _score_state["running"]:
+            return JSONResponse({"error": "Scoring already in progress."}, status_code=409)
         _score_state.update(running=True, done=0, total=0, errors=0, message="")
 
     cfg = load_config(CONFIG_PATH)
