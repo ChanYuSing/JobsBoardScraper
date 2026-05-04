@@ -1,0 +1,11 @@
+services:
+  jobboard:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - jobboard_data:/app/data          # named volume = fast native Linux I/O
+      - ./config.yaml:/app/config.yaml   # edit config without rebuilding
+
+volumes:
+  jobboard_data:
