@@ -104,12 +104,18 @@ def progress_stream():
             try:
                 conn = db_connect(cfg.storage.sqlite_path)
                 rows = conn.execute(
-                    "SELECT id, jobs_found, jobs_total FROM scheduler_run WHERE status = 'running'"
+                    "SELECT id, status, jobs_found, jobs_total, started_at"
+                    " FROM scheduler_run WHERE status IN ('running', 'queued')"
                 ).fetchall()
                 conn.close()
                 if rows:
                     payload = {
-                        str(r[0]): {"found": r[1], "total": r[2]}
+                        str(r[0]): {
+                            "status":     r[1],
+                            "found":      r[2],
+                            "total":      r[3],
+                            "started_at": r[4],
+                        }
                         for r in rows
                     }
                     yield f"event: progress\ndata: {json.dumps(payload)}\n\n"

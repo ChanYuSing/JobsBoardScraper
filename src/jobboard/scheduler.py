@@ -60,7 +60,18 @@ class RunTask:
     queued_ids: dict[tuple[str, str], int]            # (source, phase) -> scheduler_run.id
 
 
-_run_queue: _queue_mod.Queue[RunTask | None] = _queue_mod.Queue()
+@dataclasses.dataclass
+class ScoreTask:
+    """Score all (or new) jobs via AI."""
+    config_path: str
+    db_path: str
+    rescore: bool
+    progress_cb: Any | None = None   # callable(done, total, errors) or None
+    done_event: threading.Event = dataclasses.field(default_factory=threading.Event)
+
+
+_QueueItem = RunTask | ScoreTask
+_run_queue: _queue_mod.Queue[_QueueItem | None] = _queue_mod.Queue()
 
 
 def start_queue_worker() -> threading.Thread:
@@ -71,8 +82,11 @@ def start_queue_worker() -> threading.Thread:
             if task is None:          # shutdown sentinel
                 break
             try:
-                _run_all(task.sources, task.config_path, task.db_path,
-                         phases=task.phases, _queued_ids=task.queued_ids)
+                if isinstance(task, ScoreTask):
+                    _run_score(task)
+                else:
+                    _run_all(task.sources, task.config_path, task.db_path,
+                             phases=task.phases, _queued_ids=task.queued_ids)
             except Exception:
                 pass
             finally:
@@ -192,11 +206,8 @@ def _run_all(
                                 inserted += 1
                             else:
                                 updated += 1
-                            if (inserted + updated) % 20 == 0:
-                                conn.commit()
-                                update_run_jobs_found(conn, run_id, inserted + updated)
-                        conn.commit()
-                        update_run_jobs_found(conn, run_id, inserted + updated)
+                            conn.commit()
+                            update_run_jobs_found(conn, run_id, inserted + updated)
 
                 if cancelled:
                     log_run_finish(conn, run_id, status="cancelled",
@@ -335,6 +346,59 @@ def enqueue_run(
     return list(queued_ids.values())
 
 
+def enqueue_score(
+    config_path: str,
+    db_path: str,
+    rescore: bool = False,
+    progress_cb: Any = None,
+) -> ScoreTask:
+    """Push a ScoreTask onto the shared run queue.  Returns the task object
+    so callers can wait on task.done_event.
+
+    The task will start after any in-progress run/score task finishes.
+    """
+    task = ScoreTask(config_path, db_path, rescore, progress_cb)
+    _run_queue.put(task)
+    log.info("Score task enqueued  rescore=%s", rescore)
+    return task
+
+
+def _run_score(task: ScoreTask) -> None:
+    """Worker body for a ScoreTask."""
+    from .web.services.analyse import get_field_defs, score_all_jobs
+    conn = connect(task.db_path)
+    run_id = log_run_start(conn, "ai", "score")
+    try:
+        cfg        = load_config(task.config_path).ai
+        field_defs = get_field_defs(conn)
+        if not field_defs:
+            log.warning("Score task skipped — no scoring fields defined.")
+            log_run_finish(conn, run_id, status="ok", jobs_found=0)
+            return
+        original_cb = task.progress_cb
+
+        def _progress(done: int, total: int, errors: int) -> None:
+            set_run_jobs_total(conn, run_id, total)
+            update_run_jobs_found(conn, run_id, done)
+            if original_cb:
+                original_cb(done, total, errors)
+
+        scored, errors = score_all_jobs(
+            conn, cfg, field_defs,
+            rescore=task.rescore,
+            progress_cb=_progress,
+        )
+        log_run_finish(conn, run_id, status="ok", jobs_found=scored)
+        log.info("Score task done  scored=%d  errors=%d", scored, errors)
+    except Exception as exc:
+        log_run_finish(conn, run_id, status="error", error=f"{type(exc).__name__}: {exc}")
+        log.error("Score task failed: %s", exc)
+        raise
+    finally:
+        conn.close()
+        task.done_event.set()
+
+
 # ---------------------------------------------------------------------------
 # Scheduled enqueue — called by APScheduler on each cron tick
 # ---------------------------------------------------------------------------
@@ -349,6 +413,10 @@ def _schedule_enqueue(sources: list[str], config_path: str, db_path: str) -> Non
         return
     enqueue_run(sources, config_path, db_path, phases=None)
     log.info("Scheduled run enqueued: sources=%s", sources)
+    cfg = load_config(config_path)
+    if cfg.ai.auto_score:
+        enqueue_score(config_path, db_path, rescore=False)
+        log.info("Auto-score enqueued after scheduled run")
 
 
 # ---------------------------------------------------------------------------

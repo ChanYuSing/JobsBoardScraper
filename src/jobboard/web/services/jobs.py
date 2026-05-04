@@ -117,6 +117,8 @@ def list_jobs(
     sort_dir: str = "desc",
     page: int = 1,
     page_size: int = 50,
+    score_field_names: set[str] | None = None,
+    score_filters: dict[str, int] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return (rows, total_count)."""
     where, params = [], []
@@ -156,25 +158,59 @@ def list_jobs(
         where.append("js.status = 'dismissed'")
     elif triage == "new":
         where.append("js.status IS NULL")
+    if score_filters:
+        for fname, min_val in score_filters.items():
+            where.append(
+                "EXISTS (SELECT 1 FROM job_analysis ja"
+                " JOIN field_def fd ON fd.id = ja.field_id"
+                " WHERE ja.source = j.source AND ja.job_id = j.job_id"
+                " AND fd.name = ? AND ja.value_int >= ?)"
+            )
+            params.extend([fname, min_val])
 
     clause = "WHERE " + " AND ".join(where) if where else ""
 
-    base = f"""
+    sort_by_score = bool(sort_by and score_field_names and sort_by in score_field_names)
+
+    count_base = f"""
         FROM ({_union_sql()}) j
         LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
         {clause}
     """
-    total = conn.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) {count_base}", params).fetchone()[0]
 
     offset = (page - 1) * page_size
+    if sort_by_score:
+        data_base = f"""
+            FROM ({_union_sql()}) j
+            LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
+            LEFT JOIN (
+                SELECT ja.source, ja.job_id, ja.value_int AS _score_sort
+                FROM job_analysis ja
+                JOIN field_def fd ON fd.id = ja.field_id
+                WHERE fd.name = ?
+            ) ss ON ss.source = j.source AND ss.job_id = j.job_id
+            {clause}
+        """
+        order_clause = f"ss._score_sort {'ASC' if sort_dir == 'asc' else 'DESC'} NULLS LAST"
+        data_params = [sort_by] + params + [page_size, offset]
+    else:
+        data_base = count_base
+        order_clause = (
+            f"j.{sort_by} {'ASC' if sort_dir == 'asc' else 'DESC'}"
+            if sort_by in SORTABLE
+            else "j.date_posted DESC, j.first_seen_at DESC"
+        )
+        data_params = params + [page_size, offset]
+
     rows = conn.execute(
         f"""
         SELECT j.*, COALESCE(js.status, 'new') AS triage_status
-        {base}
-        ORDER BY {f'j.{sort_by} {"ASC" if sort_dir == "asc" else "DESC"}' if sort_by in SORTABLE else 'j.date_posted DESC, j.first_seen_at DESC'}
+        {data_base}
+        ORDER BY {order_clause}
         LIMIT ? OFFSET ?
         """,
-        params + [page_size, offset],
+        data_params,
     ).fetchall()
 
     return [dict(r) for r in rows], total
@@ -195,8 +231,44 @@ def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any
     return dict(row)
 
 
+def get_job_scores(
+    conn: sqlite3.Connection,
+    jobs: list[dict[str, Any]],
+    field_defs: list[dict[str, Any]],
+) -> None:
+    """Merge job_analysis score values into each job dict in-place."""
+    if not jobs or not field_defs:
+        return
+    job_ids = list({j["job_id"] for j in jobs})
+    placeholders = ",".join("?" * len(job_ids))
+    rows = conn.execute(
+        f"""
+        SELECT ja.source, ja.job_id, fd.name, fd.type, ja.value_int, ja.value_str
+        FROM job_analysis ja
+        JOIN field_def fd ON fd.id = ja.field_id
+        WHERE ja.job_id IN ({placeholders})
+        """,
+        job_ids,
+    ).fetchall()
+    scores: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r["source"], r["job_id"])
+        if key not in scores:
+            scores[key] = {}
+        scores[key][r["name"]] = r["value_int"] if r["type"] == "int" else r["value_str"]
+    for job in jobs:
+        key = (job["source"], job["job_id"])
+        if key in scores:
+            job.update(scores[key])
+
+
+_VALID_STATUSES = {"saved", "dismissed", "new"}
+
+
 def mark_job(conn: sqlite3.Connection, source: str, job_id: str, status: str) -> None:
     """Set triage status ('saved'|'dismissed'); 'new' removes the row."""
+    if status not in _VALID_STATUSES:
+        raise ValueError(f"Invalid status '{status}': must be saved, dismissed, or new.")
     if status == "new":
         conn.execute(
             "DELETE FROM job_status WHERE source = ? AND job_id = ?",

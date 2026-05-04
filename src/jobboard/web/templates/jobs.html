@@ -41,6 +41,7 @@
   <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
   <input type="hidden" name="sort_dir"       value="{{ f_sort_dir }}"/>
   {% if page_size != 15 %}<input type="hidden" name="page_size" value="{{ page_size }}"/>{% endif %}
+  {% for name, val in score_filters.items() %}<input type="hidden" name="score_min_{{ name }}" value="{{ val }}"/>{% endfor %}
   <div class="col-picker">
     <span class="col-picker__label">Columns</span>
     <div class="chip-row">
@@ -85,6 +86,8 @@
     <input type="hidden" name="date_from" value="{{ f_date_from }}"/>
     <input type="hidden" name="date_to"   value="{{ f_date_to }}"/>
   {% endif %}
+  {# carry active score-min filters when their column is not visible #}
+  {% for lbl, key in extended_display_cols %}{% if key in score_int_keys and key not in active_cols %}{% set sv = score_filters.get(key) %}{% if sv is not none %}<input type="hidden" name="score_min_{{ key }}" value="{{ sv }}"/>{% endif %}{% endif %}{% endfor %}
 
   {# ── TABLE ── #}
   <div class="table-scroll">
@@ -99,6 +102,10 @@
               <button type="button"
                       class="th-filter-btn{% if filter_active[key] %} th-filter-btn--active{% endif %}"
                       data-popup="{{ popup_for[key] }}">{{ label }}</button>
+            {% elif key in score_int_keys %}
+              <button type="button"
+                      class="th-filter-btn{% if score_filters.get(key) is not none or f_sort_by == key %} th-filter-btn--active{% endif %}"
+                      data-popup="fp-score-{{ key }}">{{ label }}{% if f_sort_by == key %} {{ '↑' if f_sort_dir == 'asc' else '↓' }}{% endif %}</button>
             {% elif key in sortable_cols %}
               <button type="button"
                       class="th-filter-btn{% if f_sort_by == key %} th-filter-btn--active{% endif %}"
@@ -137,6 +144,11 @@
               {% if job[key] %}<a href="{{ job[key] }}" target="_blank" rel="noopener noreferrer">↗</a>{% else %}—{% endif %}
             {% elif key == "teaser" %}
               <span class="cell-truncate" title="{{ job[key] or '' }}">{{ job[key] or "—" }}</span>
+            {% elif key in score_int_keys %}
+              {% set sv = job.get(key) %}
+              {% if sv is not none %}<span class="score-badge score-badge--{{ sv }}">{{ sv }}</span>{% else %}—{% endif %}
+            {% elif key in score_str_keys %}
+              {{ job.get(key) or "—" }}
             {% else %}
               {{ job[key] or "—" }}
             {% endif %}
@@ -159,6 +171,7 @@
             <input type="hidden" name="cols"           value="{{ cols_param }}"/>
             <input type="hidden" name="page"           value="{{ page }}"/>
             {% if page_size != 15 %}<input type="hidden" name="page_size" value="{{ page_size }}"/>{% endif %}
+            {% for name, val in score_filters.items() %}<input type="hidden" name="score_min_{{ name }}" value="{{ val }}"/>{% endfor %}
             {% if job.triage_status == 'saved' %}
               <span class="triage-badge triage-badge--saved">★ Saved</span>
               <button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Unsave">↩</button>
@@ -335,6 +348,23 @@
     </div>
   </div>
 
+  {# ── Score field filter popups (min value) ── #}
+  {% for label, key in ordered_cols %}
+    {% if key in score_int_keys %}
+    <div id="fp-score-{{ key }}" class="col-filter__popup" hidden>
+      <p class="col-filter__popup-title">Min {{ label }}</p>
+      <input type="number" name="score_min_{{ key }}" value="{{ score_filters.get(key, '') }}"
+             min="1" max="10" style="width:4.5rem" placeholder="1–10"/>
+      <div class="col-filter__actions">
+        <button type="submit" class="col-filter__apply">Apply</button>
+        {% if score_filters.get(key) is not none %}<button type="button" class="col-filter__clear" data-clear="score_min_{{ key }}">Clear</button>{% endif %}
+        <button type="button" class="col-filter__sort-btn" data-sort-col="{{ key }}" data-sort-dir="desc">↓ High → Low</button>
+        <button type="button" class="col-filter__sort-btn" data-sort-col="{{ key }}" data-sort-dir="asc">↑ Low → High</button>
+      </div>
+    </div>
+    {% endif %}
+  {% endfor %}
+
 </form>
 
 {# ── JOB SLIDE-IN PANEL ── #}
@@ -411,6 +441,16 @@
         var el = form.querySelector('[name="' + name + '"]');
         if (el) el.value = '';
       }
+      form.submit();
+    });
+  });
+
+
+  /* ── score-filter popup sort buttons ── */
+  document.querySelectorAll('.col-filter__sort-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.getElementById('hid-sort-by').value  = btn.dataset.sortCol;
+      document.getElementById('hid-sort-dir').value = btn.dataset.sortDir;
       form.submit();
     });
   });

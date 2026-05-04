@@ -30,99 +30,107 @@
   </div>
 </div>
 
+<form method="post" action="/schedule/save-all">
 <div class="sched-grid">
 
   {# ── left: run settings ── #}
   <article>
     <header><strong>Run settings</strong></header>
-    <form method="post" action="/schedule/save">
 
-      <div class="sched-time-row">
-        <label>
-          Time
-          <select name="hour">
-            {% for h in range(24) %}
-              <option value="{{ h }}" {% if sched.hour == h %}selected{% endif %}>
-                {% if h == 0 %}12:00 AM{% elif h < 12 %}{{ h }}:00 AM{% elif h == 12 %}12:00 PM{% else %}{{ h - 12 }}:00 PM{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>
-          Minute
-          <select name="minute">
-            {% for m in [0, 15, 30, 45] %}
-              <option value="{{ m }}" {% if sched.minute == m %}selected{% endif %}>:{{ "%02d"|format(m) }}</option>
-            {% endfor %}
-          </select>
-        </label>
-      </div>
-
-      <div class="sched-section">
-        <p class="sched-section__label">Days <small class="source-hint">unchecked = every day</small></p>
-        <div class="chip-row chip-row-days">
-          {% for idx in range(7) %}
-          <span class="chip-item">
-            <input type="checkbox" id="day_{{ idx }}" name="days" value="{{ idx }}"
-                   {% if idx in sched.days %}checked{% endif %}/>
-            <label for="day_{{ idx }}">{{ day_names[idx] }}</label>
-          </span>
+    <div class="sched-time-row">
+      <label>
+        Time
+        <select name="hour">
+          {% for h in range(24) %}
+            <option value="{{ h }}" {% if sched.hour == h %}selected{% endif %}>
+              {% if h == 0 %}12:00 AM{% elif h < 12 %}{{ h }}:00 AM{% elif h == 12 %}12:00 PM{% else %}{{ h - 12 }}:00 PM{% endif %}
+            </option>
           {% endfor %}
-        </div>
-      </div>
+        </select>
+      </label>
+      <label>
+        Minute
+        <select name="minute">
+          {% for m in ([0, 15, 30, 45] if sched.minute in [0, 15, 30, 45] else [0, 15, 30, 45, sched.minute] | sort) %}
+            <option value="{{ m }}" {% if sched.minute == m %}selected{% endif %}>:{{ "%02d"|format(m) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
 
-      <div class="sched-section">
-        <p class="sched-section__label">Run order</p>
-        {% for i in range(sched.all_sources | length) %}
-        <div class="sched-order-row">
-          <span class="sched-order-num">{{ i + 1 }}.</span>
-          <select name="order">
-            {% for s in sched.all_sources %}
-              <option value="{{ s }}" {% if i < (sched.order | length) and sched.order[i] == s %}selected{% endif %}>{{ source_labels.get(s, s) }}</option>
-            {% endfor %}
-          </select>
-        </div>
+    <div class="sched-section">
+      <p class="sched-section__label">Days <small class="source-hint">unchecked = every day</small></p>
+      <div class="chip-row chip-row-days">
+        {% for idx in range(7) %}
+        <span class="chip-item">
+          <input type="checkbox" id="day_{{ idx }}" name="days" value="{{ idx }}"
+                 {% if idx in sched.days %}checked{% endif %}/>
+          <label for="day_{{ idx }}">{{ day_names[idx] }}</label>
+        </span>
         {% endfor %}
       </div>
+    </div>
 
-      <button type="submit" class="sched-save-btn">Save</button>
-    </form>
+    <div class="sched-section">
+      <p class="sched-section__label">Run order</p>
+      {% for i in range(sched.all_sources | length) %}
+      <div class="sched-order-row">
+        <span class="sched-order-num">{{ i + 1 }}.</span>
+        <select name="order">
+          {% for s in sched.all_sources %}
+            <option value="{{ s }}" {% if i < (sched.order | length) and sched.order[i] == s %}selected{% endif %}>{{ source_labels.get(s, s) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+
+    <hr style="margin: 1.25rem 0"/>
+
+    <p class="sched-section__label" style="margin-bottom:.5rem">AI scoring</p>
+    <label style="display:flex; align-items:center; gap:.6rem; margin:0; font-weight:normal">
+      <input type="checkbox" role="switch" name="auto_score" value="1"
+             {% if auto_score %}checked{% endif %} style="margin:0"/>
+      Auto-score new jobs after each run
+    </label>
+    <p class="source-hint" style="margin:.4rem 0 0">Scores new jobs automatically after each fetch+enrich cycle.</p>
   </article>
 
   {# ── right: scraper settings ── #}
   <article>
     <header><strong>Scraper settings</strong></header>
-    <form method="post" action="/schedule/scraper-save">
-      <div class="sched-scraper-grid">
-        <label>
-          Request timeout (s)
-          <input type="number" name="request_timeout_seconds" min="1" value="{{ scraper.request_timeout_seconds }}"/>
-          <span class="source-hint">per-request HTTP timeout</span>
-        </label>
-        <label>
-          Retries
-          <input type="number" name="retries" min="0" value="{{ scraper.retries }}"/>
-          <span class="source-hint">HTTP retries on failure</span>
-        </label>
-        <label>
-          Jitter min (ms)
-          <input type="number" name="jitter_ms_min" min="0" value="{{ scraper.jitter_ms_min }}"/>
-          <span class="source-hint">random delay lower bound</span>
-        </label>
-        <label>
-          Jitter max (ms)
-          <input type="number" name="jitter_ms_max" min="0" value="{{ scraper.jitter_ms_max }}"/>
-          <span class="source-hint">random delay upper bound</span>
-        </label>
-        <label class="sched-field--full">
-          User agent
-          <input type="text" name="user_agent" value="{{ scraper.user_agent }}"/>
-          <span class="source-hint">browser identity sent with requests</span>
-        </label>
-      </div>
-      <button type="submit" class="sched-save-btn">Save scraper settings</button>
-    </form>
+    <div class="sched-scraper-grid">
+      <label>
+        Request timeout (s)
+        <input type="number" name="request_timeout_seconds" min="1" value="{{ scraper.request_timeout_seconds }}"/>
+        <span class="source-hint">per-request HTTP timeout</span>
+      </label>
+      <label>
+        Retries
+        <input type="number" name="retries" min="0" value="{{ scraper.retries }}"/>
+        <span class="source-hint">HTTP retries on failure</span>
+      </label>
+      <label>
+        Jitter min (ms)
+        <input type="number" name="jitter_ms_min" min="0" value="{{ scraper.jitter_ms_min }}"/>
+        <span class="source-hint">random delay lower bound</span>
+      </label>
+      <label>
+        Jitter max (ms)
+        <input type="number" name="jitter_ms_max" min="0" value="{{ scraper.jitter_ms_max }}"/>
+        <span class="source-hint">random delay upper bound</span>
+      </label>
+      <label class="sched-field--full">
+        User agent
+        <input type="text" name="user_agent" value="{{ scraper.user_agent }}"/>
+        <span class="source-hint">browser identity sent with requests</span>
+      </label>
+    </div>
   </article>
 
 </div>
+<div class="sched-save-row">
+  <button type="submit" class="sched-save-btn">Save settings</button>
+</div>
+</form>
 {% endblock %}

@@ -82,6 +82,11 @@
     .action-cell--sticky { position: sticky; right: 0; background: var(--pico-background-color, #fff); z-index: 1; box-shadow: -3px 0 8px rgba(0,0,0,0.07); }
     .triage-badge--saved      { font-size: 0.75rem; font-weight: 600; color: #059669; white-space: nowrap; }
     .triage-badge--dismissed  { font-size: 0.75rem; color: var(--pico-muted-color); white-space: nowrap; }
+    /* score badges — 1-4 red, 5-7 amber, 8-10 green */
+    .score-badge { display:inline-block; min-width:1.5rem; text-align:center; padding:0.1rem 0.35rem; border-radius:4px; font-size:0.78rem; font-weight:600; line-height:1.5; }
+    .score-badge--1,.score-badge--2,.score-badge--3,.score-badge--4 { background:#fee2e2; color:#b91c1c; }
+    .score-badge--5,.score-badge--6,.score-badge--7 { background:#fef3c7; color:#92400e; }
+    .score-badge--8,.score-badge--9,.score-badge--10 { background:#d1fae5; color:#065f46; }
     .triage-btn { display: inline-block !important; width: auto !important; padding: 0.15rem 0.5rem !important; font-size: 0.75rem !important; margin: 0 !important; min-height: 0 !important; height: auto !important; background: transparent !important; border: 1px solid var(--pico-muted-border-color) !important; color: var(--pico-muted-color) !important; border-radius: 4px; cursor: pointer; line-height: 1.4 !important; }
     .triage-btn--save:hover    { background: #059669 !important; border-color: #059669 !important; color: #fff !important; }
     .triage-btn--dismiss:hover { background: #dc2626 !important; border-color: #dc2626 !important; color: #fff !important; }
@@ -121,6 +126,10 @@
     .jpanel__dl dt { font-weight: 600; color: var(--pico-muted-color); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.1rem; }
     .jpanel__dl dd { margin: 0 0 0.6rem; color: var(--pico-color); }
     .jpanel__triage { display: flex; flex-direction: column; gap: 0.35rem; }
+    .jpanel__scores { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .jpanel__score-item { display: flex; align-items: center; gap: 0.5rem; }
+    .jpanel__score-label { font-size: 0.78rem; color: var(--pico-muted-color); flex: 1; }
+    .jpanel__score-str { font-size: 0.82rem; }
     .jpanel__desc { padding: 1rem 1.25rem; overflow-y: auto; }
     .jpanel__desc-html { font-size: 0.88rem; line-height: 1.65; }
     .jpanel__desc-pre { white-space: pre-wrap; font-family: inherit; font-size: 0.88rem; line-height: 1.6; }
@@ -172,6 +181,7 @@
     .sched-status--off { color: var(--pico-muted-color); }
     .sched-run-badge { margin-left: 0.5rem; }
     .sched-toggle-btn { padding: 0.22rem 0.8rem !important; font-size: 0.82rem !important; margin: 0 !important; }
+    .sched-ai-row { display: flex; align-items: center; gap: 1rem; }
     .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
     .sched-time-row { display: flex; gap: 1rem; }
     .sched-time-row label { flex: 1; }
@@ -182,6 +192,8 @@
     .sched-order-row select { margin: 0 !important; flex: 1; }
     .sched-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
     .sched-save-btn { margin-top: 1.25rem !important; width: 100% !important; }
+    .sched-save-row { margin-top: 1rem; display: flex; justify-content: flex-end; }
+    .sched-save-row .sched-save-btn { width: auto !important; padding-left: 2.5rem !important; padding-right: 2.5rem !important; margin-top: 0 !important; }
     .sched-table { font-size: 0.85rem; }
     .sched-error-cell { font-size: 0.78rem; color: var(--pico-del-color); padding-top: 0 !important; }
     .sched-viewlog { margin-top: 0.75rem !important; }
@@ -191,9 +203,13 @@
     .sched-field--full { grid-column: 1/-1; }
     /* ── analyse page ── */
     .analyse-actions { display: flex; gap: 0.75rem; align-items: center; margin: 1.25rem 0; }
-    .analyse-job-count { font-size: 0.82rem; font-weight: 400; color: var(--pico-muted-color); margin-left: 0.5rem; }
     .analyse-error { color: var(--pico-del-color); }
     .flash-ok { color: var(--pico-ins-color); }
+    .ai-settings-back { font-size: 0.82rem; font-weight: 400; color: var(--pico-muted-color); text-decoration: none; margin-left: 0.9rem; }
+    .ai-settings-back:hover { color: var(--pico-primary); }
+    /* ── ai settings page ── */
+    .ai-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; align-items: start; }
+    .ai-settings-narrow { max-width: 28rem; }
     /* ── field editor ── */
     .field-editor-header { display: grid; grid-template-columns: 1fr 80px 2fr auto; gap: 0.6rem; padding: 0 0 0.25rem; font-size: 0.8rem; font-weight: 600; color: var(--pico-muted-color); }
     .field-editor-row { display: grid; grid-template-columns: 1fr 80px 2fr auto; gap: 0.6rem; align-items: end; margin-bottom: 0.4rem; }
@@ -203,16 +219,6 @@
     /* ── preview modal ── */
     dialog.preview-modal { max-width: 800px; width: 90vw; }
     .preview-pre { white-space: pre-wrap; font-family: inherit; font-size: 0.85rem; line-height: 1.6; background: var(--pico-card-sectioning-background-color, #f8f8f8); border-radius: 6px; padding: 1rem; margin: 0; max-height: 400px; overflow-y: auto; }
-    /* ── score chips ── */
-    .score-chip { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; min-width: 3.2rem; text-align: center; }
-    .score-good { background: #d1fae5; color: #065f46; }
-    .score-mid  { background: #fef3c7; color: #92400e; }
-    .score-poor { background: #fee2e2; color: #991b1b; }
-    /* ── score table ── */
-    .score-table { width: 100%; font-size: 0.88rem; }
-    .score-table th { font-weight: 600; white-space: nowrap; }
-    .sortable-col { cursor: pointer; user-select: none; }
-    .sortable-col:hover { text-decoration: underline; }
     /* ── job detail page ── */
     .jd-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
     .jd-back { font-size: 0.85rem; color: var(--pico-muted-color); text-decoration: none; }

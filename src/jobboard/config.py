@@ -92,9 +92,21 @@ class FieldCfg(BaseModel):
 
 
 class AiCfg(BaseModel):
+    provider: str = "ollama"     # openai | ollama | lmstudio | grok | gemini | openai_compat
+    model: str = "llama3.2"
+    base_url: str = ""           # empty = use provider default (ollama: http://localhost:11434/v1)
+    api_key: str = ""            # fallback if AI_API_KEY env var not set
+    api_keys: dict[str, str] = Field(default_factory=dict)  # per-provider keys
+    temperature: float = 0.2
     system_prompt: str = ""
     cv: str = ""
+    auto_score: bool = False
     fields: list[FieldCfg] = Field(default_factory=list)
+    prompt_fields: list[str] = Field(default_factory=lambda: [
+        "title", "company", "location", "description_text", "bullet_points",
+        "work_types", "work_arrangement", "salary_label",
+        "listing_date_label", "date_posted", "employment_type", "seniority_level",
+    ])
 
 
 # ---------------------------------------------------------------------------

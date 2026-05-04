@@ -22,3 +22,5 @@ _sample_response.json
 # editor
 .vscode/
 .idea/
+
+# secrets / local config

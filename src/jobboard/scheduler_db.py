@@ -101,14 +101,15 @@ def cancel_running_rows(conn: sqlite3.Connection) -> int:
 def cancel_run_by_id(conn: sqlite3.Connection, run_id: int) -> int:
     """Mark a specific run row as 'cancelled'.
 
-    Returns 1 if the row was updated, 0 if not found or not running.
+    Returns 1 if the row was updated, 0 if not found or already finished.
     """
     cur = conn.execute(
         """
         UPDATE scheduler_run
-           SET finished_at = ?, status = 'cancelled',
+           SET finished_at = CASE WHEN status = 'running' THEN ? ELSE finished_at END,
+               status = 'cancelled',
                error = 'cancelled by user'
-         WHERE id = ? AND status = 'running'
+         WHERE id = ? AND status IN ('running', 'queued')
         """,
         (_now_iso(), run_id),
     )

@@ -2,7 +2,7 @@
 {% block title %}Runs — JobBoard{% endblock %}
 
 {% block content %}
-{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
+{% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest', 'ai': 'AI'} %}
 {% set has_active = runs | selectattr("status", "in", ["running", "queued"]) | list | length > 0 %}
 
 <div class="runs-heading">
@@ -28,10 +28,12 @@
       <td>{{ r.phase }}</td>
       <td>{{ r.started_at | localdt }}</td>
       <td id="dur-{{ r.id }}"{% if r.status == 'running' and r.started_at %} data-started="{{ r.started_at }}"{% endif %}>{% if r.duration_sec is not none %}{{ r.duration_sec | int }}s{% else %}—{% endif %}</td>
-      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td><span class="badge badge-{{ r.status }}" id="sts-{{ r.id }}">{{ r.status }}</span></td>
       <td id="jobs-{{ r.id }}">
         {%- if r.jobs_found is not none -%}
           {%- if r.phase == 'enrich' and r.jobs_total is not none -%}
+            {{ r.jobs_found }} / {{ r.jobs_total }}
+          {%- elif r.phase == 'score' and r.jobs_total is not none -%}
             {{ r.jobs_found }} / {{ r.jobs_total }}
           {%- else -%}
             {{ r.jobs_found }}
@@ -40,10 +42,10 @@
       </td>
       <td class="runs-error-cell">{{ r.error[:120] ~ "…" if r.error and r.error|length > 120 else (r.error or "") }}</td>
       <td class="runs-del-col">
-        {% if r.status == 'running' %}
+        {% if r.status in ('running', 'queued') %}
         <form method="post" action="/runs/kill-run" class="runs-inline-form">
           <input type="hidden" name="run_id" value="{{ r.id }}"/>
-          <button type="submit" class="runs-kill-btn outline" title="Kill run">⏹</button>
+          <button type="submit" class="runs-kill-btn outline" title="{% if r.status == 'queued' %}Cancel queued run{% else %}Kill run{% endif %}">⏹</button>
         </form>
         {% else %}
         <form method="post" action="/runs/delete-selected" class="runs-inline-form"
@@ -69,9 +71,25 @@
   es.addEventListener('progress', function (e) {
     var data = JSON.parse(e.data);
     for (var id in data) {
+      var v = data[id];
+
+      // update status badge
+      var sts = document.getElementById('sts-' + id);
+      if (sts && sts.textContent !== v.status) {
+        sts.className = 'badge badge-' + v.status;
+        sts.textContent = v.status;
+      }
+
+      // wire duration timer when a queued row first becomes running
+      var dur = document.getElementById('dur-' + id);
+      if (dur && v.status === 'running' && v.started_at && !dur.dataset.started) {
+        dur.dataset.started = v.started_at;
+      }
+
+      // update jobs cell — only show counts when running (not queued)
       var cell = document.getElementById('jobs-' + id);
       if (!cell) continue;
-      var v = data[id];
+      if (v.status !== 'running') continue;
       var found = v.found;
       var total = v.total;
       if (found === null || found === undefined) { cell.textContent = '\u2014'; }

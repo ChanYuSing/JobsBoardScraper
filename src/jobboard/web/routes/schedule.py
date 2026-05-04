@@ -5,7 +5,10 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..deps import CONFIG_PATH, templates
-from ..services.schedule import DAY_NAMES, get_schedule, get_scraper, save_schedule, save_scraper, toggle_schedule_enabled
+from ..services.schedule import (
+    DAY_NAMES, get_schedule, get_scraper, get_ai_auto_score,
+    save_schedule, save_scraper, save_ai_auto_score, toggle_schedule_enabled,
+)
 
 router = APIRouter()
 
@@ -19,6 +22,7 @@ def schedule_page(
     from ...scheduler import _run_active
     sched = get_schedule(CONFIG_PATH)
     scraper = get_scraper(CONFIG_PATH)
+    auto_score = get_ai_auto_score(CONFIG_PATH)
     return templates.TemplateResponse(
         request,
         "schedule.html",
@@ -27,6 +31,7 @@ def schedule_page(
             "sched": sched,
             "day_names": DAY_NAMES,
             "scraper": scraper,
+            "auto_score": auto_score,
             "running": _run_active.is_set(),
             "flash": flash,
             "flash_type": flash_type,
@@ -124,3 +129,53 @@ def kill_run():
         "/schedule?flash=Kill+signal+sent.+Run+will+stop+at+the+next+checkpoint.",
         status_code=303,
     )
+
+
+@router.post("/schedule/ai-save")
+async def ai_save(request: Request):
+    form = await request.form()
+    auto_score = form.get("auto_score") == "1"
+    save_ai_auto_score(CONFIG_PATH, auto_score)
+    return RedirectResponse("/schedule?flash=AI+settings+saved", status_code=303)
+
+
+@router.post("/schedule/save-all")
+async def save_all(request: Request):
+    """Unified save for run settings + scraper settings + AI scoring."""
+    form = await request.form()
+    try:
+        hour   = int(form.get("hour", 1))
+        minute = int(form.get("minute", 0))
+        days   = [int(d) for d in form.getlist("days")]
+        order  = [s for s in form.getlist("order") if s]
+        save_schedule(CONFIG_PATH, hour, minute, days, order)
+        save_scraper(
+            CONFIG_PATH,
+            timeout=int(form.get("request_timeout_seconds", 20)),
+            retries=int(form.get("retries", 3)),
+            jitter_min=int(form.get("jitter_ms_min", 1000)),
+            jitter_max=int(form.get("jitter_ms_max", 3000)),
+            user_agent=str(form.get("user_agent", "")),
+        )
+        save_ai_auto_score(CONFIG_PATH, form.get("auto_score") == "1")
+        # Apply new cron to the live APScheduler job immediately (no restart needed).
+        scheduler = getattr(request.app.state, "scheduler", None)
+        if scheduler is not None:
+            from apscheduler.triggers.cron import CronTrigger
+            from ..deps import get_config
+            cfg = get_config()
+            if cfg.scheduler.cron:
+                try:
+                    scheduler.reschedule_job(
+                        "run_all",
+                        trigger=CronTrigger.from_crontab(
+                            cfg.scheduler.cron, timezone="Asia/Hong_Kong"
+                        ),
+                    )
+                except Exception:
+                    pass  # job may not exist yet; restart will pick it up
+        return RedirectResponse("/schedule?flash=Settings+saved", status_code=303)
+    except Exception as exc:
+        return RedirectResponse(
+            f"/schedule?flash={str(exc)[:120]}&flash_type=error", status_code=303
+        )

@@ -2,28 +2,54 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from ..deps import CONFIG_PATH, get_db, templates
+from ...config import load_config
+from ...scheduler import enqueue_score
 from ..services.analyse import (
+    ALL_PROMPT_FIELDS,
     build_preview_prompts,
     get_ai_config,
-    get_analysis_results,
     get_field_defs,
+    get_score_job_counts,
     save_ai_config,
     save_field_defs,
+    score_all_jobs,
 )
+from ..services.ai_client import score_job
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# Score-all task state (one task at a time)
+# ---------------------------------------------------------------------------
+
+_score_lock = threading.Lock()
+_score_state: dict[str, Any] = {
+    "running": False,
+    "done":    0,
+    "total":   0,
+    "errors":  0,
+    "message": "",   # last error message if any
+}
+
 
 def _form_ai(form) -> dict:
-    """Extract prompt-building fields from a form submission."""
+    """Extract all AI settings from a form submission."""
     return {
+        "provider":      str(form.get("provider",     "")),
+        "model":         str(form.get("model",        "")),
+        "base_url":      str(form.get("base_url",     "")),
+        "api_key":       str(form.get("api_key",      "")),
+        "temperature":   form.get("temperature",      ""),
         "system_prompt": str(form.get("system_prompt", "")),
-        "cv": str(form.get("cv", "")),
+        "cv":            str(form.get("cv",           "")),
+        "prompt_fields": list(form.getlist("prompt_fields[]")),
     }
 
 
@@ -48,17 +74,20 @@ def analyse_page(
 ):
     ai = get_ai_config(CONFIG_PATH)
     field_defs = get_field_defs(conn)
-    stored_results = get_analysis_results(conn, field_defs)
+    job_counts = get_score_job_counts(conn)
     return templates.TemplateResponse(
         request,
         "analyse.html",
         {
             "active": "analyse",
             "ai": ai,
+            "api_keys": ai.get("api_keys", {}),
             "field_defs": field_defs,
             "flash": flash,
             "flash_type": flash_type,
-            "stored_results": stored_results,
+            "all_prompt_fields": ALL_PROMPT_FIELDS,
+            "job_counts": job_counts,
+            "providers": _PROVIDERS,
         },
     )
 
@@ -94,7 +123,22 @@ async def analyse_save(
                         "fields": scored,
                     })
             save_field_defs(conn, fields)
-        save_ai_config(CONFIG_PATH, system_prompt=form_ai["system_prompt"], cv=form_ai["cv"], fields=fields or None)
+        try:
+            temp = float(form_ai["temperature"]) if form_ai["temperature"] != "" else None
+        except ValueError:
+            temp = None
+        save_ai_config(
+            CONFIG_PATH,
+            system_prompt=form_ai["system_prompt"],
+            cv=form_ai["cv"],
+            fields=fields or None,
+            provider=form_ai["provider"] or None,
+            model=form_ai["model"] or None,
+            base_url=form_ai["base_url"],  # always save (empty string clears old URL)
+            api_key=form_ai["api_key"] if form_ai["api_key"] != "" else None,
+            temperature=temp,
+            prompt_fields=form_ai["prompt_fields"] or None,
+        )
         return JSONResponse({"ok": True})
     except Exception as exc:
         return JSONResponse({"error": str(exc)[:200]}, status_code=400)
@@ -111,12 +155,105 @@ async def analyse_preview(
         field_defs = _form_field_defs(form)
         if not field_defs:
             field_defs = get_field_defs(conn)
-        result = build_preview_prompts(conn, form_ai["system_prompt"], form_ai["cv"], field_defs)
+        result = build_preview_prompts(
+            conn, form_ai["system_prompt"], form_ai["cv"], field_defs,
+            prompt_fields=form_ai["prompt_fields"] or None,
+        )
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 @router.post("/analyse/score")
-async def analyse_score(request: Request):
-    return JSONResponse({"error": "AI scoring is not yet configured."}, status_code=501)
+async def analyse_score(
+    request: Request,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Enqueue a score-all task on the shared run queue.  Returns immediately."""
+    with _score_lock:
+        if _score_state["running"]:
+            return JSONResponse({"error": "Scoring already in progress."}, status_code=409)
+
+    form = await request.form()
+    rescore = form.get("rescore") == "1"
+
+    field_defs = get_field_defs(conn)
+    if not field_defs:
+        return JSONResponse({"error": "No scoring fields defined."}, status_code=400)
+
+    with _score_lock:
+        _score_state.update(running=True, done=0, total=0, errors=0, message="")
+
+    cfg = load_config(CONFIG_PATH)
+    scored_ref = [0]
+    errors_ref = [0]
+
+    def _progress(done: int, total: int, errors: int) -> None:
+        scored_ref[0] = done - errors
+        errors_ref[0] = errors
+        with _score_lock:
+            _score_state["done"]   = done
+            _score_state["total"]  = total
+            _score_state["errors"] = errors
+
+    task = enqueue_score(CONFIG_PATH, cfg.storage.sqlite_path, rescore=rescore, progress_cb=_progress)
+
+    def _finish_watcher() -> None:
+        task.done_event.wait()
+        with _score_lock:
+            _score_state["message"] = f"Done — {scored_ref[0]} scored, {errors_ref[0]} errors."
+            _score_state["running"] = False
+
+    threading.Thread(target=_finish_watcher, daemon=True).start()
+
+    with _score_lock:
+        return JSONResponse({"ok": True, "state": dict(_score_state)})
+
+
+@router.post("/analyse/test")
+async def analyse_test(request: Request):
+    """Send a single prompt pair to the AI and return the parsed result."""
+    try:
+        body = await request.json()
+        system = body.get("system", "")
+        user   = body.get("user", "")
+        cfg    = load_config(CONFIG_PATH).ai
+        result = score_job(cfg, system, user)
+        return JSONResponse({"ok": True, "result": result})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)[:500]}, status_code=400)
+
+
+@router.get("/analyse/score/status")
+def analyse_score_status():
+    """Poll endpoint — returns current scoring task state."""
+    with _score_lock:
+        return JSONResponse(dict(_score_state))
+
+
+# ---------------------------------------------------------------------------
+# AI provider settings page
+# ---------------------------------------------------------------------------
+
+_PROVIDERS = [
+    {"value": "ollama",        "label": "Ollama (local)"},
+    {"value": "lmstudio",      "label": "LM Studio (local)"},
+    {"value": "openai",        "label": "OpenAI"},
+    {"value": "grok",          "label": "Grok (xAI)"},
+    {"value": "gemini",        "label": "Gemini (Google)"},
+    {"value": "deepseek",      "label": "DeepSeek"},
+    {"value": "anthropic",     "label": "Anthropic (Claude)"},
+    {"value": "openai_compat", "label": "OpenAI-compatible (custom)"},
+]
+
+
+@router.get("/analyse/settings")
+def ai_settings_page():
+    """Redirects to the unified Analyse page."""
+    return RedirectResponse("/analyse", status_code=301)
+
+
+@router.post("/analyse/settings/save")
+async def ai_settings_save():
+    """Redirects to the unified Analyse page."""
+    return RedirectResponse("/analyse", status_code=303)

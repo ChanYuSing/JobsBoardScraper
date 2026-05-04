@@ -1,4 +1,4 @@
-sources:
+﻿sources:
   jobsdb:
     enabled: true
     keywords: null
@@ -18,9 +18,7 @@ sources:
     enabled: true
     location: Hong Kong
     keywords:
-    - machine learning
-    - quant
-    - analyst
+    - software engineer
     hours_old: 720
     job_type: null
     is_remote: null
@@ -29,31 +27,34 @@ sources:
     sort_by_date: null
     geo_id: null
     industry_id: null
+
 scraper:
   request_timeout_seconds: 20
   retries: 3
   jitter_ms:
   - 1000
   - 3000
-  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
-    like Gecko) Chrome/147.0.0.0 Safari/537.36
+  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+
 storage:
   sqlite_path: data/jobs.sqlite
+
 scheduler:
-  cron: 0 0 * * *
+  enabled: false
+  cron: 0 1 * * *
   order:
   - jobsdb
   - linkedin_guest
-  retry_delay_minutes: 60
-  max_retries: 3
-  enabled: true
+
 ai:
-  system_prompt: "You are an honest career advisor. Given a candidate CV and a job\
-    \ listing, score the job on each criterion below.\r\n\r\nBe objective — do not\
-    \ inflate scores. Use the full 1-10 scale:\r\n- 8-10: strong fit, apply without\
-    \ hesitation\r\n- 5-7: partial fit, real caveats exist\r\n- 1-4: poor fit, likely\
-    \ to be screened out or misaligned\r\n\r\nFlag key issues: skills gaps, seniority\
-    \ mismatch, scope, location, or work arrangement."
+  provider: ollama
+  model: llama3.2
+  base_url: ''
+  api_key: ''
+  api_keys: {}
+  temperature: 0.2
+  auto_score: false
+  system_prompt: "You are an honest career advisor. Given a candidate CV and a job listing, score the job on each criterion below.\r\n\r\nBe objective - do not inflate scores. Use the full 1-10 scale:\r\n- 8-10: strong fit, apply without hesitation\r\n- 5-7: partial fit, real caveats exist\r\n- 1-4: poor fit, likely to be screened out or misaligned\r\n\r\nFlag key issues: skills gaps, seniority mismatch, scope, location, or work arrangement."
   cv: ''
   fields:
   - name: skills_match
@@ -61,15 +62,34 @@ ai:
     description: How well the candidate's skills match what the role requires (1-10)
   - name: seniority_fit
     type: int
-    description: How well the candidate's experience level matches the expected seniority
-      (1-10)
+    description: How well the candidate's experience level matches the expected seniority (1-10)
   - name: growth_value
     type: int
     description: How much this role benefits the candidate's career growth (1-10)
   - name: overall
     type: int
-    description: Overall recommendation — should the candidate apply? (1-10)
+    description: Overall recommendation - should the candidate apply? (1-10)
   - name: verdict
     type: str
-    description: 'One sentence: the strongest reason to apply, or the key concern
-      that stops you'
+    description: 'One sentence: the strongest reason to apply, or the key concern that stops you'
+  prompt_fields:
+  - title
+  - company
+  - location
+  - description_text
+  - bullet_points
+  - work_types
+  - work_arrangement
+  - salary_label
+  - listing_date_label
+  - date_posted
+  - employment_type
+  - seniority_level
+  - classification
+  - subclassification
+  - teaser
+  - abstract
+  - benefit_text
+  - job_function
+  - industries
+  - num_applicants

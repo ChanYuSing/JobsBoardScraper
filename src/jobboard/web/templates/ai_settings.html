@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}AI Settings — JobBoard{% endblock %}
+
+{% block content %}
+<p class="page-heading">
+  AI Settings
+  <a href="/analyse" class="ai-settings-back">← Back to Analyse</a>
+</p>
+
+<form method="post" action="/analyse/settings/save" id="ai-settings-form">
+  <article>
+    <header><strong>Provider</strong></header>
+    <div class="ai-settings-grid">
+
+      <label>
+        Provider
+        <select name="provider" id="ai-provider" onchange="onProviderChange()">
+          {% for p in providers %}
+          <option value="{{ p.value }}"{% if ai.provider == p.value %} selected{% endif %}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>
+        Model
+        <input type="text" name="model" id="ai-model" value="{{ ai.model }}" placeholder="e.g. llama3.2"/>
+        <small id="ai-model-hint" class="source-hint"></small>
+      </label>
+
+    </div>
+  </article>
+
+  <article>
+    <header><strong>Connection</strong></header>
+    <div class="ai-settings-grid">
+
+      <label id="ai-apikey-label">
+        API Key
+        <input type="password" name="api_key" id="ai-apikey"
+               value="{{ ai.api_key }}"
+               placeholder="env AI_API_KEY or paste key here"
+               autocomplete="off"/>
+        <small class="source-hint">Stored in config.yaml. Set <code>AI_API_KEY</code> env var to override.</small>
+      </label>
+
+      <label id="ai-baseurl-label">
+        Base URL
+        <input type="text" name="base_url" id="ai-baseurl"
+               value="{{ ai.base_url }}"
+               placeholder="Leave empty to use provider default"/>
+        <small id="ai-baseurl-hint" class="source-hint"></small>
+      </label>
+
+    </div>
+  </article>
+
+  <article>
+    <header><strong>Parameters</strong></header>
+    <div class="ai-settings-narrow">
+      <label>
+        Temperature
+        <input type="number" name="temperature" id="ai-temperature"
+               value="{{ ai.temperature }}"
+               min="0" max="2" step="0.1"
+               style="max-width:8rem"/>
+        <small class="source-hint">0.0–2.0. Lower = more deterministic scores. Recommended: 0.1–0.3.</small>
+      </label>
+    </div>
+  </article>
+
+  <div class="analyse-actions">
+    <button type="submit">Save settings</button>
+  </div>
+</form>
+
+<script>
+const PROVIDER_DEFAULTS = {
+  openai:        { model: 'gpt-4o-mini',               baseUrl: '',                                                   needsKey: true,  showBase: false },
+  grok:          { model: 'grok-3-mini',               baseUrl: '',                                                   needsKey: true,  showBase: false },
+  gemini:        { model: 'gemini-2.0-flash',          baseUrl: '',                                                   needsKey: true,  showBase: false },
+  ollama:        { model: 'llama3.2',                  baseUrl: 'http://localhost:11434/v1',                          needsKey: false, showBase: true  },
+  lmstudio:      { model: 'llama-3.2-3b-instruct',     baseUrl: 'http://localhost:1234/v1',                          needsKey: false, showBase: true  },
+  openai_compat: { model: '',                          baseUrl: '',                                                   needsKey: true,  showBase: true  },
+};
+
+function onProviderChange() {
+  const provider = document.getElementById('ai-provider').value;
+  const def = PROVIDER_DEFAULTS[provider] || {};
+
+  // model — fill default only if field is blank or still shows the old provider's default
+  const modelInput = document.getElementById('ai-model');
+  const prevDefaults = Object.values(PROVIDER_DEFAULTS).map(d => d.model);
+  if (!modelInput.value || prevDefaults.includes(modelInput.value)) {
+    modelInput.value = def.model || '';
+  }
+
+  // base URL — fill default, or clear if not shown
+  const baseInput  = document.getElementById('ai-baseurl');
+  const baseLabel  = document.getElementById('ai-baseurl-label');
+  const baseHint   = document.getElementById('ai-baseurl-hint');
+  if (def.showBase) {
+    baseLabel.style.display = '';
+    if (!baseInput.value || Object.values(PROVIDER_DEFAULTS).map(d => d.baseUrl).includes(baseInput.value)) {
+      baseInput.value = def.baseUrl;
+    }
+    baseHint.textContent = def.baseUrl ? 'Default: ' + def.baseUrl : 'Required — paste your endpoint URL.';
+  } else {
+    baseLabel.style.display = 'none';
+    baseInput.value = '';
+    baseHint.textContent = '';
+  }
+
+  // API key
+  const keyLabel = document.getElementById('ai-apikey-label');
+  const keyInput = document.getElementById('ai-apikey');
+  if (def.needsKey) {
+    keyLabel.style.display = '';
+    keyInput.disabled = false;
+    keyInput.placeholder = 'env AI_API_KEY or paste key here';
+  } else {
+    keyLabel.style.display = 'none';
+    keyInput.disabled = true;
+    keyInput.value = '';
+  }
+}
+
+// run on page load to set correct visibility
+onProviderChange();
+</script>
+{% endblock %}

@@ -169,9 +169,8 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                             inserted += 1
                         else:
                             updated += 1
-                        if (inserted + updated) % 20 == 0:
-                            conn.commit()
-                            update_run_jobs_found(conn, run_id, inserted + updated)
+                        conn.commit()
+                        update_run_jobs_found(conn, run_id, inserted + updated)
                 conn.commit()
                 update_run_jobs_found(conn, run_id, inserted + updated)
     except CloudflareBlockedError as exc:

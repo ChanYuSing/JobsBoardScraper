@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import re
 import sqlite3
@@ -10,8 +11,9 @@ from typing import Any
 
 import yaml
 
-from ...config import FieldCfg, config_write_lock, load_config
+from ...config import AiCfg, FieldCfg, config_write_lock, load_config
 from ...db import sync_fields_full
+from .ai_client import score_job
 
 _write_lock = config_write_lock
 
@@ -25,6 +27,36 @@ _SKIP_COLS = frozenset({
     "detail_fetched_at", "detail_error",
 })
 
+# Ordered list of all selectable columns for the prompt-fields UI.
+ALL_PROMPT_FIELDS: list[dict[str, str]] = [
+    {"key": "title",              "label": "Title"},
+    {"key": "company",            "label": "Company"},
+    {"key": "location",           "label": "Location"},
+    {"key": "description_text",   "label": "Description"},
+    {"key": "bullet_points",      "label": "Bullet points"},
+    {"key": "work_types",         "label": "Work type"},
+    {"key": "work_arrangement",   "label": "Work arrangement"},
+    {"key": "salary_label",       "label": "Salary"},
+    {"key": "listing_date_label", "label": "Date listed (jobsdb)"},
+    {"key": "date_posted",        "label": "Date posted (LinkedIn)"},
+    {"key": "employment_type",    "label": "Employment type (LinkedIn)"},
+    {"key": "seniority_level",    "label": "Seniority (LinkedIn)"},
+    {"key": "classification",     "label": "Classification (jobsdb)"},
+    {"key": "subclassification",  "label": "Subclassification (jobsdb)"},
+    {"key": "teaser",             "label": "Teaser (jobsdb)"},
+    {"key": "abstract",           "label": "Abstract (jobsdb)"},
+    {"key": "benefit_text",       "label": "Benefits (LinkedIn)"},
+    {"key": "job_function",       "label": "Job function (LinkedIn)"},
+    {"key": "industries",         "label": "Industries (LinkedIn)"},
+    {"key": "num_applicants",     "label": "Applicants (LinkedIn)"},
+]
+
+DEFAULT_PROMPT_FIELDS: list[str] = [
+    "title", "company", "location", "description_text", "bullet_points",
+    "work_types", "work_arrangement", "salary_label",
+    "listing_date_label", "date_posted", "employment_type", "seniority_level",
+]
+
 JOB_PROMPT = (
     "Candidate CV:\n{cv}\n\n"
     "---\n\n"
@@ -35,31 +67,53 @@ JOB_PROMPT = (
 )
 
 
-def _build_job_info(job: dict[str, Any]) -> str:
-    """Format all meaningful job columns as 'key: value' lines."""
-    skip = _SKIP_COLS | {"job_id"}
+def _build_job_info(job: dict[str, Any], allowed_fields: list[str]) -> str:
+    """Format selected job columns as 'key: value' lines for the AI prompt."""
+    skip = _SKIP_COLS | {"job_id", "source"}
     lines = []
-    for key, val in job.items():
-        if key in skip or val is None or val == "":
+    for key in allowed_fields:
+        if key in skip:
             continue
-        if key == "description_text":
-            text = str(val)
-            if len(text) > 3000:
-                text = text[:3000] + "\u2026[truncated]"
-            lines.append(f"{key}: {text}")
-        elif key == "bullet_points":
+        val = job.get(key)
+        if val is None or val == "":
+            continue
+        if key == "bullet_points":
             try:
                 bullets = json.loads(val)
                 if isinstance(bullets, list):
-                    formatted = "\n".join(f"  - {b}" for b in bullets)
-                    lines.append(f"bullet_points:\n{formatted}")
+                    if not bullets:
+                        continue
+                    lines.append("bullet_points:\n" + "\n".join(f"  - {b}" for b in bullets))
                     continue
             except Exception:
                 pass
-            lines.append(f"{key}: {val}")
-        else:
-            lines.append(f"{key}: {val}")
+        lines.append(f"{key}: {val}")
     return "\n".join(lines)
+
+
+def _pick_preview_job(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Return one random non-dismissed job, strongly preferring enriched ones.
+
+    Queries the DB directly so recency ordering doesn't hide the enriched pool.
+    """
+    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
+        skip_cols = _SKIP_COLS | {"job_id"}
+        rows = conn.execute(
+            f"""
+            SELECT j.* FROM {table} j
+            LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id
+            WHERE COALESCE(s.status, 'new') != 'dismissed'
+              AND j.description_text IS NOT NULL AND j.description_text != ''
+            ORDER BY RANDOM() LIMIT 20
+            """,
+            (source,),
+        ).fetchall()
+        if rows:
+            r = random.choice(rows)
+            d = {k: r[k] for k in r.keys() if k not in skip_cols}
+            d["source"] = source
+            return d
+    return None
 
 
 def build_preview_prompts(
@@ -67,16 +121,21 @@ def build_preview_prompts(
     system_prompt: str,
     cv: str,
     field_defs: list[dict[str, Any]],
+    prompt_fields: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Pick a random non-dismissed job and return fully assembled system + user prompts."""
-    jobs = get_jobs_for_analysis(conn, max_jobs=50)
-    if not jobs:
-        return {"error": "No jobs in database"}
-    job = random.choice(jobs)
+    """Pick a random non-dismissed enriched job and return fully assembled prompts."""
+    allowed = prompt_fields or DEFAULT_PROMPT_FIELDS
+    job = _pick_preview_job(conn)
+    if job is None:
+        # fall back to any job (nothing enriched yet)
+        jobs = get_jobs_for_analysis(conn, max_jobs=50)
+        if not jobs:
+            return {"error": "No jobs in database"}
+        job = random.choice(jobs)
     user_msg = (
         JOB_PROMPT
         .replace("{cv}", cv or "[CV not provided]")
-        .replace("{job_info}", _build_job_info(job))
+        .replace("{job_info}", _build_job_info(job, allowed))
         .replace("{fields_spec}", build_fields_spec(field_defs))
         .replace("{json_example}", build_json_example(field_defs))
     )
@@ -134,33 +193,172 @@ def save_field_defs(conn: sqlite3.Connection, fields: list[dict[str, Any]]) -> l
 def get_ai_config(config_path: str) -> dict[str, Any]:
     cfg = load_config(config_path)
     return {
+        "provider":      cfg.ai.provider,
+        "model":         cfg.ai.model,
+        "base_url":      cfg.ai.base_url,
+        "api_key":       cfg.ai.api_key,
+        "api_keys":      dict(cfg.ai.api_keys),
+        "temperature":   cfg.ai.temperature,
         "system_prompt": cfg.ai.system_prompt,
-        "cv": cfg.ai.cv,
-        "fields": [{"name": f.name, "type": f.type, "description": f.description} for f in cfg.ai.fields],
+        "cv":            cfg.ai.cv,
+        "fields":        [{"name": f.name, "type": f.type, "description": f.description} for f in cfg.ai.fields],
+        "prompt_fields": cfg.ai.prompt_fields or DEFAULT_PROMPT_FIELDS,
     }
 
 
 def save_ai_config(
     config_path: str,
-    system_prompt: str,
-    cv: str,
+    system_prompt: str | None = None,
+    cv: str | None = None,
     fields: list[dict[str, Any]] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    temperature: float | None = None,
+    prompt_fields: list[str] | None = None,
 ) -> None:
     with _write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
         raw.setdefault("ai", {})
-        raw["ai"]["system_prompt"] = system_prompt
-        raw["ai"]["cv"] = cv
-        if fields is not None:
+        if provider      is not None: raw["ai"]["provider"]      = provider
+        if model         is not None: raw["ai"]["model"]         = model
+        if base_url      is not None: raw["ai"]["base_url"]      = base_url  # "" clears old URL
+        if api_key       is not None:
+            raw["ai"]["api_key"] = api_key
+            # also store per-provider so switching providers doesn't leak keys
+            _prov = raw["ai"].get("provider")
+            if _prov:
+                raw["ai"].setdefault("api_keys", {})[_prov] = api_key
+        if temperature   is not None: raw["ai"]["temperature"]   = temperature
+        if system_prompt is not None: raw["ai"]["system_prompt"] = system_prompt
+        if cv            is not None: raw["ai"]["cv"]             = cv
+        if fields        is not None:
             raw["ai"]["fields"] = [{"name": f["name"], "type": f["type"], "description": f["description"]} for f in fields]
+        if prompt_fields is not None:
+            raw["ai"]["prompt_fields"] = prompt_fields
         with open(config_path, "w", encoding="utf-8") as fh:
             yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
 
 # ---------------------------------------------------------------------------
+# Batch scoring
+# ---------------------------------------------------------------------------
+
+def _already_scored_keys(
+    conn: sqlite3.Connection,
+    field_names: list[str],
+) -> set[tuple[str, str]]:
+    """Return (source, job_id) pairs that already have all fields scored."""
+    if not field_names:
+        return set()
+    placeholders = ",".join("?" * len(field_names))
+    rows = conn.execute(
+        f"""
+        SELECT ja.source, ja.job_id
+        FROM job_analysis ja
+        JOIN field_def fd ON fd.id = ja.field_id
+        WHERE fd.name IN ({placeholders})
+        GROUP BY ja.source, ja.job_id
+        HAVING COUNT(DISTINCT fd.name) = ?
+        """,
+        (*field_names, len(field_names)),
+    ).fetchall()
+    return {(r[0], r[1]) for r in rows}
+
+
+def score_all_jobs(
+    conn: sqlite3.Connection,
+    cfg: AiCfg,
+    field_defs: list[dict[str, Any]],
+    *,
+    rescore: bool = False,
+    progress_cb: Any = None,
+) -> tuple[int, int]:
+    """Score all non-dismissed enriched jobs.  Returns (scored, errors).
+
+    Args:
+        rescore:     When True, re-score jobs that already have all fields stored.
+        progress_cb: Optional callable(done: int, total: int, errors: int) called
+                     after every job attempt.
+    """
+    log = logging.getLogger(__name__)
+
+    field_names = [f["name"] for f in field_defs]
+    if not field_names:
+        raise ValueError("No scoring fields defined — add fields before scoring.")
+
+    jobs = get_jobs_for_analysis(conn, max_jobs=999_999)
+    # Prefer enriched jobs but don't exclude bare ones — scoring may still work
+    # with just bullet_points/teaser for short job ads.
+
+    if not rescore:
+        scored_keys = _already_scored_keys(conn, field_names)
+        jobs = [j for j in jobs if (j["source"], j["job_id"]) not in scored_keys]
+
+    total   = len(jobs)
+    scored  = 0
+    errors  = 0
+
+    system = cfg.system_prompt
+    cv     = cfg.cv
+
+    allowed = cfg.prompt_fields or DEFAULT_PROMPT_FIELDS
+
+    for i, job in enumerate(jobs):
+        user_msg = (
+            JOB_PROMPT
+            .replace("{cv}", cv or "[CV not provided]")
+            .replace("{job_info}", _build_job_info(job, allowed))
+            .replace("{fields_spec}", build_fields_spec(field_defs))
+            .replace("{json_example}", build_json_example(field_defs))
+        )
+        try:
+            result = score_job(cfg, system, user_msg)
+            save_job_analysis(conn, job["source"], job["job_id"], result)
+            scored += 1
+        except Exception as exc:
+            log.warning("Score failed [%s/%s]: %s", job["source"], job["job_id"], exc)
+            errors += 1
+
+        if progress_cb is not None:
+            try:
+                progress_cb(i + 1, total, errors)
+            except Exception:
+                pass
+
+    return scored, errors
+
+
+# ---------------------------------------------------------------------------
 # Job fetching
 # ---------------------------------------------------------------------------
+
+def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Return total non-dismissed jobs and how many haven't been scored yet."""
+    total = 0
+    new = 0
+    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
+        row = conn.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE ja.job_id IS NULL) AS new_count
+            FROM {table} j
+            LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id
+            LEFT JOIN (
+                SELECT DISTINCT source, job_id FROM job_analysis
+            ) ja ON ja.source = ? AND ja.job_id = j.job_id
+            WHERE COALESCE(s.status, 'new') != 'dismissed'
+            """,
+            (source, source),
+        ).fetchone()
+        if row:
+            total += row["total"]
+            new   += row["new_count"]
+    return {"total": total, "new": new}
+
 
 def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[str, Any]]:
     result = []
@@ -183,7 +381,7 @@ def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[
 
 
 # ---------------------------------------------------------------------------
-# Analysis results storage and retrieval (EAV)
+# EAV storage
 # ---------------------------------------------------------------------------
 
 def save_job_analysis(
@@ -214,56 +412,6 @@ def save_job_analysis(
             (source, job_id, field_id, value_int, value_str, now),
         )
     conn.commit()
-
-
-def get_analysis_results(
-    conn: sqlite3.Connection,
-    field_defs: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    if not field_defs:
-        return []
-    rows = conn.execute(
-        """
-        SELECT
-            ja.source, ja.job_id, ja.analysed_at,
-            fd.name, fd.type,
-            ja.value_int, ja.value_str,
-            COALESCE(jj.title, jl.title)     AS title,
-            COALESCE(jj.company, jl.company) AS company
-        FROM job_analysis ja
-        JOIN field_def fd ON fd.id = ja.field_id
-        LEFT JOIN job_jobsdb jj
-            ON ja.source = 'jobsdb' AND ja.job_id = jj.job_id
-        LEFT JOIN job_linkedin jl
-            ON ja.source = 'linkedin_guest' AND ja.job_id = jl.job_id
-        ORDER BY ja.source, ja.job_id, fd.sort_order
-        """
-    ).fetchall()
-
-    jobs: dict[tuple, dict] = {}
-    for r in rows:
-        key = (r["source"], r["job_id"])
-        if key not in jobs:
-            jobs[key] = {
-                "source": r["source"],
-                "job_id": r["job_id"],
-                "analysed_at": r["analysed_at"],
-                "title": r["title"],
-                "company": r["company"],
-                "fields": {},
-            }
-        value = r["value_int"] if r["type"] == "int" else r["value_str"]
-        jobs[key]["fields"][r["name"]] = value
-
-    # Sort by last int field (typically "overall") desc
-    int_fields = [f["name"] for f in field_defs if f["type"] == "int"]
-    sort_key = int_fields[-1] if int_fields else None
-
-    def _rank(j: dict) -> tuple:
-        s = -(j["fields"].get(sort_key) or 0) if sort_key else 0
-        return (s, j["analysed_at"])
-
-    return sorted(jobs.values(), key=_rank)
 
 
 # ---------------------------------------------------------------------------

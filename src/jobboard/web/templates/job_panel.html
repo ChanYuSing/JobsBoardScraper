@@ -50,6 +50,24 @@
         <button type="button" class="triage-btn triage-btn--reset"    data-status="new">↩ Reset</button>
       {% endif %}
     </div>
+
+    {% if field_defs %}
+    <div class="jpanel__scores">
+      {% for f in field_defs %}
+        {% set sv = job.get(f.name) %}
+        {% if sv is not none %}
+        <div class="jpanel__score-item">
+          <span class="jpanel__score-label">{{ f.label }}</span>
+          {% if f.type == "int" %}
+            <span class="score-badge score-badge--{{ sv }}">{{ sv }}</span>
+          {% else %}
+            <span class="jpanel__score-str">{{ sv }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
   </aside>
 
   {# ── right: description ── #}

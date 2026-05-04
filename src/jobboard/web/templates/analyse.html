@@ -9,14 +9,14 @@
   {# ── cv ── #}
   <article>
     <header><strong>Your CV</strong></header>
-    <textarea name="cv" rows="12" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
+    <textarea name="cv" rows="8" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
   </article>
 
   {# ── scoring fields ── #}
   <article>
     <header><strong>Scoring fields</strong></header>
     <p class="source-hint">
-      Each field becomes a column in the results table. The name is used as both the JSON key and the column header (auto-formatted to <code>snake_case</code>). Type: int = 1–10 score, str = free text.
+      Each field is a scored dimension. The name becomes both the JSON key and the column header in the Jobs table (auto-formatted to <code>snake_case</code>). Type: <strong>int</strong> = 1–10 score, <strong>str</strong> = free text.
     </p>
     <div id="field-editor">
       <div class="field-editor-header">
@@ -37,28 +37,110 @@
     <button type="button" class="outline secondary field-add-btn" onclick="addFieldRow()">+ Add field</button>
   </article>
 
-  {# ── prompts ── #}
+  {# ── prompt fields ── #}
   <article>
-    <header><strong>Prompts</strong></header>
-    <label>
-      System prompt
-      <textarea name="system_prompt" rows="4">{{ ai.system_prompt }}</textarea>
-    </label>
+    <header><strong>Job fields sent to AI</strong></header>
+    <p class="source-hint">Choose which columns are included in each prompt. Fewer = shorter, faster, cheaper. Always keep <strong>Description</strong>.</p>
+    <div class="chip-row">
+      {% for f in all_prompt_fields %}
+      <span class="chip-item">
+        <input type="checkbox" id="pf-{{ f.key }}" name="prompt_fields[]" value="{{ f.key }}"
+               {% if f.key in ai.prompt_fields %}checked{% endif %}/>
+        <label for="pf-{{ f.key }}">{{ f.label }}</label>
+      </span>
+      {% endfor %}
+    </div>
+  </article>
+
+  {# ── system prompt ── #}
+  <article>
+    <header><strong>System prompt</strong></header>
+    <textarea name="system_prompt" rows="4" placeholder="Optional instruction prepended to every request — e.g. 'You are a concise recruiter assistant…'">{{ ai.system_prompt }}</textarea>
+  </article>
+
+  {# ── ai provider ── #}
+  <article>
+    <header><strong>AI Provider</strong></header>
+
+    <div class="ai-settings-grid">
+      <label>
+        Provider
+        <select name="provider" id="ai-provider" onchange="onProviderChange()">
+          {% for p in providers %}
+          <option value="{{ p.value }}"{% if ai.provider == p.value %} selected{% endif %}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Model
+        <input type="text" name="model" id="ai-model" value="{{ ai.model }}" placeholder="e.g. llama3.2"/>
+        <small id="ai-model-hint" class="source-hint"></small>
+      </label>
+    </div>
+
+    <div class="ai-settings-grid" style="margin-top:1rem">
+      <label id="ai-apikey-label">
+        API Key
+        <input type="password" name="api_key" id="ai-apikey"
+               value=""
+               placeholder="env AI_API_KEY or paste key here"
+               autocomplete="off"/>
+        <small class="source-hint">Stored in config.yaml. Set <code>AI_API_KEY</code> env var to override.</small>
+      </label>
+      <label id="ai-baseurl-label">
+        Base URL
+        <input type="text" name="base_url" id="ai-baseurl"
+               value="{{ ai.base_url }}"
+               placeholder="Leave empty to use provider default"/>
+        <small id="ai-baseurl-hint" class="source-hint"></small>
+      </label>
+    </div>
+
+    <div class="ai-settings-narrow" style="margin-top:1rem">
+      <label>
+        Temperature
+        <input type="number" name="temperature" id="ai-temperature"
+               value="{{ ai.temperature }}"
+               min="0" max="2" step="0.1"
+               style="max-width:8rem"/>
+        <small class="source-hint">0.0–2.0. Lower = more deterministic scores. Recommended: 0.1–0.3.</small>
+      </label>
+    </div>
   </article>
 
   <div class="analyse-actions">
-    <button type="button" class="secondary outline" onclick="saveSettings(this)">Save settings</button>
-    <button type="button" class="outline" onclick="openPreview()">Preview prompts</button>
+    <button type="button" onclick="saveSettings(this)">Save settings</button>
+    <button type="button" class="secondary outline" onclick="openPreview()">Preview prompts</button>
   </div>
 
 </form>
 
+{# ── score all ── #}
+<article>
+  <header>
+    <strong>Score Jobs</strong>
+    <small id="job-count-badge" class="source-hint" style="margin-left:0.75rem">
+      {{ job_counts.new }} new&nbsp;&middot;&nbsp;{{ job_counts.total }} total
+    </small>
+  </header>
+  <p class="source-hint">
+    Runs the AI against every non-dismissed job using the saved settings above.
+    Score new jobs only, or re-run everything.
+  </p>
+  <div class="analyse-actions">
+    <button id="score-btn"   onclick="scoreAll(false)">Score new jobs</button>
+    <button id="rescore-btn" onclick="scoreAll(true)" class="outline secondary">Re-score all</button>
+  </div>
+  <div id="score-progress-wrap" hidden>
+    <progress id="score-progress" value="0" max="100" style="width:100%;margin:0.5rem 0 0.25rem"></progress>
+    <small id="score-status-text" class="source-hint"></small>
+  </div>
+</article>
+
 {# ── confirm delete dialog ── #}
 <dialog id="confirm-delete-dialog">
   <article>
-    <header>
-      <strong>Delete scored data?</strong>
-    </header>
+    <header><strong>Delete scored data?</strong></header>
     <p>Removing these fields will permanently delete all their scored data:</p>
     <ul id="confirm-delete-list"></ul>
     <p>This cannot be undone.</p>
@@ -80,55 +162,75 @@
     <pre id="preview-system" class="preview-pre"></pre>
     <h4>User prompt</h4>
     <pre id="preview-job" class="preview-pre"></pre>
+    <div id="test-result-wrap" hidden style="margin-top:1rem">
+      <h4>AI response</h4>
+      <pre id="test-result" class="preview-pre"></pre>
+    </div>
     <footer>
-      <button onclick="document.getElementById('preview-dialog').close()">Close</button>
+      <button id="send-test-btn" class="secondary outline" onclick="sendTest()">Send test</button>
+      <button onclick="closePreview()">Close</button>
     </footer>
   </article>
 </dialog>
 
-{# ── per-job scored results ── #}
-{% if stored_results %}
-<article>
-  <header>
-    <strong>Scored Jobs</strong>
-    <span class="analyse-job-count">{{ stored_results|length }} stored</span>
-  </header>
-
-  <div{% if not stored_results %} hidden{% endif %}>
-    <table class="score-table">
-      <thead>
-        <tr>
-          {% for fd in field_defs %}
-          <th class="sortable-col" onclick="sortByCol({{ loop.index0 }})">{{ fd.label }}</th>
-          {% endfor %}
-          <th>Title</th>
-          <th>Company</th>
-        </tr>
-      </thead>
-      <tbody id="score-tbody">
-        {% for r in stored_results %}
-        <tr>
-          {% for fd in field_defs %}
-            {% set v = r.fields.get(fd.name) %}
-            <td>
-              {% if fd.type == 'int' and v is not none %}
-                <span class="score-chip {{ 'score-good' if v >= 7 else 'score-mid' if v >= 4 else 'score-poor' }}">{{ v }}/10</span>
-              {% else %}
-                {{ v if v is not none else '—' }}
-              {% endif %}
-            </td>
-          {% endfor %}
-          <td><a href="/jobs/{{ r.source }}/{{ r.job_id }}">{{ r.title or '(no title)' }}</a></td>
-          <td>{{ r.company or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</article>
-{% endif %}
-
 <script>
+
+// ── Provider settings ─────────────────────────────────────────────────────
+
+const API_KEYS = {{ api_keys | tojson }};
+
+const PROVIDER_DEFAULTS = {
+  openai:        { model: 'gpt-4o-mini',                  baseUrl: '',                          needsKey: true,  showBase: false },
+  grok:          { model: 'grok-4-1-fast-non-reasoning',   baseUrl: '',                          needsKey: true,  showBase: false },
+  gemini:        { model: 'gemini-2.0-flash',              baseUrl: '',                          needsKey: true,  showBase: false },
+  deepseek:      { model: 'deepseek-v4-flash',            baseUrl: '',                          needsKey: true,  showBase: false },
+  anthropic:     { model: 'claude-sonnet-4-5',             baseUrl: '',                          needsKey: true,  showBase: false },
+  ollama:        { model: 'llama3.2',                      baseUrl: 'http://localhost:11434/v1', needsKey: false, showBase: true  },
+  lmstudio:      { model: 'llama-3.2-3b-instruct',        baseUrl: 'http://localhost:1234/v1',  needsKey: false, showBase: true  },
+  openai_compat: { model: '',                              baseUrl: '',                          needsKey: true,  showBase: true  },
+};
+
+function onProviderChange() {
+  const provider  = document.getElementById('ai-provider').value;
+  const def       = PROVIDER_DEFAULTS[provider] || {};
+  const allBases  = Object.values(PROVIDER_DEFAULTS).map(d => d.baseUrl);
+  const allModels = Object.values(PROVIDER_DEFAULTS).map(d => d.model);
+
+  const modelInput = document.getElementById('ai-model');
+  if (!modelInput.value || allModels.includes(modelInput.value)) {
+    modelInput.value = def.model || '';
+  }
+
+  const baseInput = document.getElementById('ai-baseurl');
+  const baseLabel = document.getElementById('ai-baseurl-label');
+  const baseHint  = document.getElementById('ai-baseurl-hint');
+  if (def.showBase) {
+    baseLabel.style.display = '';
+    if (!baseInput.value || allBases.includes(baseInput.value)) {
+      baseInput.value = def.baseUrl;
+    }
+    baseHint.textContent = def.baseUrl ? 'Default: ' + def.baseUrl : 'Required — paste your endpoint URL.';
+  } else {
+    baseLabel.style.display = 'none';
+    baseInput.value = '';
+    baseHint.textContent = '';
+  }
+
+  const keyLabel = document.getElementById('ai-apikey-label');
+  const keyInput = document.getElementById('ai-apikey');
+  if (def.needsKey) {
+    keyLabel.style.display = '';
+    keyInput.disabled = false;
+    keyInput.value = API_KEYS[provider] || '';
+  } else {
+    keyLabel.style.display = 'none';
+    keyInput.disabled = true;
+    keyInput.value = '';
+  }
+}
+
+onProviderChange();
+
 
 // ── Field editor ──────────────────────────────────────────────────────────
 
@@ -148,6 +250,10 @@ function formatFieldName(input) {
   const pos = input.selectionStart;
   input.value = input.value.toLowerCase().replace(/[^a-z0-9_]/g, c => c === ' ' ? '_' : '');
   input.setSelectionRange(pos, pos);
+}
+
+function removeFieldRow(btn) {
+  btn.closest('.field-editor-row').remove();
 }
 
 async function saveSettings(btn, confirmed = false) {
@@ -173,11 +279,10 @@ async function saveSettings(btn, confirmed = false) {
   }
 }
 
-function removeFieldRow(btn) {
-  btn.closest('.field-editor-row').remove();
-}
 
 // ── Preview prompts ───────────────────────────────────────────────────────
+
+let _previewData = null;
 
 function openPreview() {
   const btn = document.querySelector('button[onclick="openPreview()"]');
@@ -188,45 +293,145 @@ function openPreview() {
   fetch('/analyse/preview', { method: 'POST', body: formData })
     .then(r => r.json())
     .then(data => {
-      if (data.error) {
-        alert('Preview error: ' + data.error);
-        return;
-      }
-      const header = document.querySelector('#preview-dialog header strong');
-      header.textContent = 'Preview — ' + data.job_title + ' @ ' + data.job_company;
+      if (data.error) { alert('Preview error: ' + data.error); return; }
+      _previewData = { system: data.system || '', user: data.user || '' };
+      document.querySelector('#preview-dialog header strong').textContent =
+        'Preview — ' + data.job_title + ' @ ' + data.job_company;
       document.getElementById('preview-system').textContent = data.system || '(empty)';
-      document.getElementById('preview-job').textContent = data.user || '(empty)';
+      document.getElementById('preview-job').textContent   = data.user   || '(empty)';
+      document.getElementById('test-result-wrap').hidden = true;
+      document.getElementById('test-result').textContent  = '';
+      document.getElementById('send-test-btn').disabled   = false;
+      document.getElementById('send-test-btn').textContent = 'Send test';
       document.getElementById('preview-dialog').showModal();
     })
     .catch(err => alert('Preview failed: ' + err))
     .finally(() => { btn.disabled = false; btn.textContent = 'Preview prompts'; });
 }
 
-
-// ── Table sort ────────────────────────────────────────────────────────────
-
-function sortByCol(colIndex) {
-  const tbody = document.getElementById('score-tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-  const asc = tbody.dataset.sortCol === String(colIndex) && tbody.dataset.sortDir === 'asc';
-  tbody.dataset.sortCol = colIndex;
-  tbody.dataset.sortDir = asc ? 'desc' : 'asc';
-  rows.sort((a, b) => {
-    const getVal = r => {
-      const cell = r.querySelectorAll('td')[colIndex];
-      if (!cell) return '';
-      const chip = cell.querySelector('.score-chip');
-      const text = chip ? chip.textContent : cell.textContent;
-      const n = parseFloat(text);
-      return isNaN(n) ? text.trim().toLowerCase() : n;
-    };
-    const va = getVal(a), vb = getVal(b);
-    if (va < vb) return asc ? 1 : -1;
-    if (va > vb) return asc ? -1 : 1;
-    return 0;
-  });
-  rows.forEach(r => tbody.appendChild(r));
+function closePreview() {
+  document.getElementById('preview-dialog').close();
+  _previewData = null;
 }
+
+async function sendTest() {
+  if (!_previewData) return;
+  const btn  = document.getElementById('send-test-btn');
+  const wrap = document.getElementById('test-result-wrap');
+  const pre  = document.getElementById('test-result');
+  btn.disabled    = true;
+  btn.textContent = 'Sending…';
+  wrap.hidden     = false;
+  pre.textContent = 'Waiting for AI…';
+  try {
+    const r = await fetch('/analyse/test', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(_previewData),
+    });
+    const data = await r.json();
+    pre.textContent = data.error
+      ? 'Error: ' + data.error
+      : JSON.stringify(data.result, null, 2);
+  } catch(e) {
+    pre.textContent = 'Request failed: ' + e;
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Send test';
+  }
+}
+
+
+// ── Score all ─────────────────────────────────────────────────────────────
+
+let _scorePoller = null;
+
+async function scoreAll(rescore) {
+  const scoreBtn   = document.getElementById('score-btn');
+  const rescoreBtn = document.getElementById('rescore-btn');
+  const wrap       = document.getElementById('score-progress-wrap');
+  const bar        = document.getElementById('score-progress');
+  const txt        = document.getElementById('score-status-text');
+
+  scoreBtn.disabled   = true;
+  rescoreBtn.disabled = true;
+  wrap.hidden = false;
+  bar.value = 0;
+  txt.textContent = 'Starting…';
+
+  try {
+    const fd = new FormData();
+    if (rescore) fd.set('rescore', '1');
+    const r = await fetch('/analyse/score', { method: 'POST', body: fd });
+    if (r.status === 409) {
+      txt.textContent = 'Already running — check progress below.';
+      startScorePoller();
+      return;
+    }
+    const data = await r.json();
+    if (data.error) {
+      txt.textContent = 'Error: ' + data.error;
+      scoreBtn.disabled = rescoreBtn.disabled = false;
+      return;
+    }
+  } catch(e) {
+    txt.textContent = 'Failed to start: ' + e;
+    scoreBtn.disabled = rescoreBtn.disabled = false;
+    return;
+  }
+
+  startScorePoller();
+}
+
+function startScorePoller() {
+  if (_scorePoller) return;
+  _scorePoller = setInterval(pollScoreStatus, 2000);
+  pollScoreStatus();
+}
+
+async function pollScoreStatus() {
+  const bar  = document.getElementById('score-progress');
+  const txt  = document.getElementById('score-status-text');
+  const wrap = document.getElementById('score-progress-wrap');
+  try {
+    const s = await fetch('/analyse/score/status').then(r => r.json());
+    wrap.hidden = false;
+    if (s.total > 0) {
+      bar.max   = s.total;
+      bar.value = s.done;
+      txt.textContent = `${s.done} / ${s.total} scored${s.errors ? ' · ' + s.errors + ' errors' : ''}`;
+    } else if (s.running) {
+      bar.removeAttribute('value');
+      txt.textContent = 'Starting…';
+    }
+    if (!s.running) {
+      clearInterval(_scorePoller);
+      _scorePoller = null;
+      bar.max = 1; bar.value = 1;
+      txt.textContent = s.message || 'Done';
+      document.getElementById('score-btn').disabled    = false;
+      document.getElementById('rescore-btn').disabled  = false;
+      setTimeout(() => window.location.reload(), 800);
+    }
+  } catch(e) {
+    clearInterval(_scorePoller);
+    _scorePoller = null;
+    document.getElementById('score-status-text').textContent = 'Status poll failed: ' + e;
+  }
+}
+
+// Resume poller if a task is already running when page loads
+(async () => {
+  try {
+    const s = await fetch('/analyse/score/status').then(r => r.json());
+    if (s.running) {
+      document.getElementById('score-progress-wrap').hidden = false;
+      document.getElementById('score-btn').disabled   = true;
+      document.getElementById('rescore-btn').disabled = true;
+      startScorePoller();
+    }
+  } catch(_) {}
+})();
 
 </script>
 {% endblock %}

@@ -65,6 +65,12 @@ def toggle_schedule_enabled(config_path: str, enabled: bool) -> None:
 
 def save_schedule(config_path: str, hour: int, minute: int, days: list[int],
                   order: list[str]) -> None:
+    if not (0 <= hour <= 23):
+        raise ValueError(f"Hour must be 0-23, got {hour}")
+    if not (0 <= minute <= 59):
+        raise ValueError(f"Minute must be 0-59, got {minute}")
+    if any(d not in range(7) for d in days):
+        raise ValueError("Day values must be 0-6")
     cron = ui_to_cron(hour, minute, days)
     with config_write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
@@ -96,6 +102,14 @@ def save_scraper(
     jitter_max: int,
     user_agent: str,
 ) -> None:
+    if timeout < 1:
+        raise ValueError("Request timeout must be at least 1 second")
+    if retries < 0:
+        raise ValueError("Retries cannot be negative")
+    if jitter_min < 0 or jitter_max < 0:
+        raise ValueError("Jitter values cannot be negative")
+    if jitter_min > jitter_max:
+        raise ValueError("Jitter min cannot exceed jitter max")
     with config_write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
@@ -130,3 +144,17 @@ def get_last_runs(conn) -> dict[str, dict[str, Any]]:
             "error": r[5],
         }
     return result
+
+
+def get_ai_auto_score(config_path: str) -> bool:
+    return load_config(config_path).ai.auto_score
+
+
+def save_ai_auto_score(config_path: str, auto_score: bool) -> None:
+    with config_write_lock:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        raw.setdefault("ai", {})
+        raw["ai"]["auto_score"] = auto_score
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
