@@ -1,11 +1,17 @@
 """Configuration loader. Reads config.yaml into typed pydantic models."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Shared lock used by all services that read-modify-write config.yaml.
+# A single lock object ensures concurrent writes from different services
+# are serialised correctly.
+config_write_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -74,10 +80,9 @@ class StorageCfg(BaseModel):
 
 
 class SchedulerCfg(BaseModel):
+    enabled: bool = True             # set False to pause cron without losing the schedule
     cron: str | None = None          # single cron for all enabled sources e.g. "0 1 * * *"
     order: list[str] | None = None   # explicit run order; null = use config.yaml source order
-    retry_delay_minutes: int = 60    # wait this long before retrying a failed run
-    max_retries: int = 3             # give up after this many consecutive retries
 
 
 class FieldCfg(BaseModel):
@@ -98,14 +103,14 @@ class AiCfg(BaseModel):
 class Config(BaseModel):
     """Multi-source config: one entry per source under ``sources:``."""
 
-    sources: dict[str, Any] = Field(default_factory=dict)
+    sources: dict[str, SourceCfgBase] = Field(default_factory=dict)
     scraper: ScraperCfg = Field(default_factory=ScraperCfg)
     storage: StorageCfg = Field(default_factory=StorageCfg)
     scheduler: SchedulerCfg = Field(default_factory=SchedulerCfg)
     ai: AiCfg = Field(default_factory=AiCfg)
 
     def enabled_sources(self) -> list[str]:
-        return [n for n, s in self.sources.items() if getattr(s, "enabled", True)]
+        return [n for n, s in self.sources.items() if s.enabled]
 
 
 def _coerce_source(name: str, raw: dict[str, Any]):

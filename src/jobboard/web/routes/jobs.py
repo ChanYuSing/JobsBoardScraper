@@ -3,17 +3,14 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date as _date
-from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
-from ..deps import get_db
+from ..deps import get_db, templates
 from ..services.jobs import (
-    ALL_DISPLAY_COLS, DEFAULT_COLS, get_filter_options, get_job, list_jobs, mark_job,
-    _SORTABLE,
+    ALL_DISPLAY_COLS, DEFAULT_COLS, SORTABLE, get_filter_options, get_job, list_jobs, mark_job,
 )
 
 
@@ -32,7 +29,6 @@ def _days_ago(date_str: str | None) -> str | None:
         return None
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -125,7 +121,7 @@ def jobs_page(
             "f_triage": triage,
             "f_sort_by": sort_by,
             "f_sort_dir": sort_dir,
-            "sortable_cols": _SORTABLE,
+            "sortable_cols": SORTABLE,
             # pagination base query string
             "page_qs": page_qs,
         },
@@ -198,7 +194,7 @@ def mark(
     sort_dir: str = Form("desc"),
     cols: str = Form(""),
     page: int = Form(1),
-    page_size: int = Form(20),
+    page_size: int = Form(15),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     mark_job(conn, source, job_id, status)

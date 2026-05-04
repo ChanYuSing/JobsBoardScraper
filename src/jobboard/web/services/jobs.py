@@ -94,17 +94,10 @@ def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
     }
 
 
-_SORTABLE: set[str] = {
+SORTABLE: set[str] = {
     "title", "company", "location", "work_type", "salary",
     "date_posted", "source", "classification", "first_seen_at",
 }
-
-_JOB_COLS: list[str] = [
-    "job_id","title","company","location","work_type","work_arrangement",
-    "salary","date_posted","classification","subclassification","teaser",
-    "description_text","description_html","url","first_seen_at",
-    "detail_fetched_at","source","triage_status",
-]
 
 
 def list_jobs(
@@ -178,13 +171,13 @@ def list_jobs(
         f"""
         SELECT j.*, COALESCE(js.status, 'new') AS triage_status
         {base}
-        ORDER BY {f'j.{sort_by} {"ASC" if sort_dir == "asc" else "DESC"}' if sort_by in _SORTABLE else 'j.date_posted DESC, j.first_seen_at DESC'}
+        ORDER BY {f'j.{sort_by} {"ASC" if sort_dir == "asc" else "DESC"}' if sort_by in SORTABLE else 'j.date_posted DESC, j.first_seen_at DESC'}
         LIMIT ? OFFSET ?
         """,
         params + [page_size, offset],
     ).fetchall()
 
-    return [dict(zip(_JOB_COLS, r)) for r in rows], total
+    return [dict(r) for r in rows], total
 
 
 def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any] | None:
@@ -199,7 +192,7 @@ def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any
     ).fetchone()
     if row is None:
         return None
-    return dict(zip(_JOB_COLS, row))
+    return dict(row)
 
 
 def mark_job(conn: sqlite3.Connection, source: str, job_id: str, status: str) -> None:

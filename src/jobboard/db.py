@@ -5,7 +5,6 @@ import sqlite3
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
-from typing import Literal
 
 
 # Schema lives next to the package (see [tool.setuptools.package-data] in pyproject.toml).
@@ -22,43 +21,29 @@ def _now_iso() -> str:
 def connect(path: str | Path) -> sqlite3.Connection:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(p, check_same_thread=False, timeout=10)
+    conn = sqlite3.connect(p, check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
-    """Apply shared schema, per-source schemas, and sweep orphaned runs."""
+    """Apply shared schema and per-source schemas.
+
+    Does NOT sweep orphan runs — call sweep_orphan_runs() separately, once
+    at process startup, so that in-flight queued rows created by this process
+    are not immediately cancelled.
+    """
     _migrate_analysis_schema(conn)
+    _migrate_scheduler_run(conn)
+    _migrate_drop_run_refs(conn)
     conn.executescript(_SCHEMA_SQL)
-    _sweep_orphan_runs(conn)
     from .sources.linkedin import db as li_db
     li_db.init_schema(conn)
     from .sources.jobsdb import db as jdb_db
     jdb_db.init_schema(conn)
-    conn.commit()
-
-
-def sync_fields_upsert(conn: sqlite3.Connection, fields: list) -> None:
-    """Upsert fields from config into field_def without deleting anything.
-
-    Safe to call at startup — never removes existing rows or scores.
-    ``fields`` is a list of FieldCfg objects (or any object with .name/.type/.description).
-    """
-    for i, f in enumerate(fields):
-        conn.execute(
-            """
-            INSERT INTO field_def (name, type, description, sort_order)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                type        = excluded.type,
-                description = excluded.description,
-                sort_order  = excluded.sort_order
-            """,
-            (f.name, f.type, f.description, i),
-        )
     conn.commit()
 
 
@@ -92,6 +77,104 @@ def sync_fields_full(conn: sqlite3.Connection, fields: list) -> list[str]:
     return deleted
 
 
+def _migrate_drop_run_refs(conn: sqlite3.Connection) -> None:
+    """Drop the old run table and its FK columns from both job tables."""
+    # job_jobsdb — rebuild without FK columns if they still exist
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(job_jobsdb)").fetchall()}
+    if "first_seen_run_id" in cols or "last_seen_run_id" in cols:
+        conn.executescript("""
+            BEGIN;
+            CREATE TABLE _job_jobsdb_new (
+                job_id              TEXT PRIMARY KEY,
+                url                 TEXT,
+                title               TEXT NOT NULL,
+                company             TEXT,
+                location            TEXT,
+                classification      TEXT,
+                subclassification   TEXT,
+                work_types          TEXT,
+                work_arrangement    TEXT,
+                salary_label        TEXT,
+                teaser              TEXT,
+                bullet_points       TEXT,
+                listing_date_utc    TEXT,
+                listing_date_label  TEXT,
+                description_html    TEXT,
+                description_text    TEXT,
+                abstract            TEXT,
+                expires_at_utc      TEXT,
+                is_expired          INTEGER,
+                first_seen_at       TEXT NOT NULL,
+                last_seen_at        TEXT NOT NULL,
+                detail_fetched_at   TEXT,
+                detail_error        TEXT,
+                raw_card_json       TEXT,
+                raw_detail_json     TEXT
+            );
+            INSERT INTO _job_jobsdb_new
+                SELECT job_id, url, title, company, location,
+                       classification, subclassification, work_types, work_arrangement,
+                       salary_label, teaser, bullet_points, listing_date_utc,
+                       listing_date_label, description_html, description_text,
+                       abstract, expires_at_utc, is_expired,
+                       first_seen_at, last_seen_at,
+                       detail_fetched_at, detail_error,
+                       raw_card_json, raw_detail_json
+                  FROM job_jobsdb;
+            DROP TABLE job_jobsdb;
+            ALTER TABLE _job_jobsdb_new RENAME TO job_jobsdb;
+            COMMIT;
+        """)
+
+    # job_linkedin — rebuild without FK columns if they still exist
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(job_linkedin)").fetchall()}
+    if "first_seen_run_id" in cols or "last_seen_run_id" in cols:
+        conn.executescript("""
+            BEGIN;
+            CREATE TABLE _job_linkedin_new (
+                job_id              TEXT PRIMARY KEY,
+                url                 TEXT,
+                title               TEXT NOT NULL,
+                company             TEXT,
+                company_url         TEXT,
+                company_logo_url    TEXT,
+                location            TEXT,
+                date_posted         TEXT,
+                benefit_text        TEXT,
+                seniority_level     TEXT,
+                employment_type     TEXT,
+                job_function        TEXT,
+                industries          TEXT,
+                num_applicants      TEXT,
+                description_text    TEXT,
+                description_html    TEXT,
+                first_seen_at       TEXT NOT NULL,
+                last_seen_at        TEXT NOT NULL,
+                detail_fetched_at   TEXT,
+                detail_error        TEXT,
+                raw_card_json       TEXT,
+                raw_detail_json     TEXT
+            );
+            INSERT INTO _job_linkedin_new
+                SELECT job_id, url, title, company, company_url, company_logo_url,
+                       location, date_posted, benefit_text,
+                       seniority_level, employment_type, job_function, industries,
+                       num_applicants, description_text, description_html,
+                       first_seen_at, last_seen_at,
+                       detail_fetched_at, detail_error,
+                       raw_card_json, raw_detail_json
+                  FROM job_linkedin;
+            DROP TABLE job_linkedin;
+            ALTER TABLE _job_linkedin_new RENAME TO job_linkedin;
+            COMMIT;
+        """)
+
+    # Drop the old run table (no longer written to)
+    conn.execute("DROP INDEX IF EXISTS idx_run_source")
+    conn.execute("DROP TABLE IF EXISTS run")
+    conn.commit()
+
+
 def _migrate_analysis_schema(conn: sqlite3.Connection) -> None:
     """Drop analysis tables that have an outdated schema."""
     ja_cols = {r[1] for r in conn.execute("PRAGMA table_info(job_analysis)").fetchall()}
@@ -103,54 +186,73 @@ def _migrate_analysis_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-def _sweep_orphan_runs(conn: sqlite3.Connection) -> None:
-    """Mark any leftover 'running' runs as 'error' (process crashed/was killed)."""
+def _migrate_scheduler_run(conn: sqlite3.Connection) -> None:
+    """Fix scheduler_run schema: drop NOT NULL on started_at, add jobs_total."""
+    cols_info = conn.execute("PRAGMA table_info(scheduler_run)").fetchall()
+    if not cols_info:
+        return  # table doesn't exist yet; CREATE TABLE IF NOT EXISTS will handle it
+
+    col_map = {r[1]: r for r in cols_info}  # name -> row
+
+    needs_recreate = False
+    # started_at must be nullable (notnull flag = 0)
+    if "started_at" in col_map and col_map["started_at"][3] == 1:  # notnull==1
+        needs_recreate = True
+
+    if needs_recreate:
+        conn.executescript("""
+            BEGIN;
+            ALTER TABLE scheduler_run RENAME TO _scheduler_run_old;
+            CREATE TABLE scheduler_run (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                source       TEXT    NOT NULL,
+                phase        TEXT    NOT NULL,
+                started_at   TEXT,
+                finished_at  TEXT,
+                status       TEXT    NOT NULL,
+                jobs_found   INTEGER,
+                jobs_total   INTEGER,
+                error        TEXT
+            );
+            INSERT INTO scheduler_run
+                (id, source, phase, started_at, finished_at, status, jobs_found, error)
+            SELECT id, source, phase, started_at, finished_at, status, jobs_found, error
+              FROM _scheduler_run_old;
+            DROP TABLE _scheduler_run_old;
+            COMMIT;
+        """)
+        return  # table already has jobs_total from the CREATE above
+
+    # Table structure is fine — just add jobs_total if missing
+    if "jobs_total" not in col_map:
+        conn.execute("ALTER TABLE scheduler_run ADD COLUMN jobs_total INTEGER")
+        conn.commit()
+
+
+def sweep_orphan_runs(conn: sqlite3.Connection) -> None:
+    """Mark stale scheduler_run rows from a previous crashed process as error/cancelled.
+
+    Call once at process startup — before any new work is queued.
+    """
+    now = _now_iso()
+    # scheduler_run: running rows → error, queued rows → cancelled
     conn.execute(
         """
-        UPDATE run
+        UPDATE scheduler_run
            SET status = 'error',
                finished_at = COALESCE(finished_at, ?),
                error = COALESCE(error, 'process did not finish cleanly')
          WHERE status = 'running'
         """,
-        (_now_iso(),),
+        (now,),
     )
-
-
-# ---------------------------------------------------------------------------
-# Run lifecycle
-# ---------------------------------------------------------------------------
-def start_run(conn: sqlite3.Connection, source: str) -> int:
-    cur = conn.execute(
-        "INSERT INTO run (source, started_at, status) VALUES (?, ?, 'running')",
-        (source, _now_iso()),
-    )
-    conn.commit()
-    return int(cur.lastrowid)
-
-
-def finish_run(
-    conn: sqlite3.Connection,
-    run_id: int,
-    *,
-    status: Literal["ok", "error"],
-    total_seen: int = 0,
-    inserted: int = 0,
-    updated: int = 0,
-    error: str | None = None,
-) -> None:
     conn.execute(
         """
-        UPDATE run
-           SET finished_at = ?,
-               status      = ?,
-               total_seen  = ?,
-               inserted    = ?,
-               updated     = ?,
-               error       = ?
-         WHERE id = ?
+        UPDATE scheduler_run
+           SET status = 'cancelled',
+               error = 'server restarted before run started'
+         WHERE status = 'queued'
         """,
-        (_now_iso(), status, total_seen, inserted, updated, error, run_id),
     )
-    conn.commit()
+
 

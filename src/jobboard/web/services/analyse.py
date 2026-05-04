@@ -5,16 +5,15 @@ import json
 import random
 import re
 import sqlite3
-import threading
 from datetime import datetime, timezone
 from typing import Any
 
 import yaml
 
-from ...config import FieldCfg, load_config
+from ...config import FieldCfg, config_write_lock, load_config
 from ...db import sync_fields_full
 
-_write_lock = threading.Lock()
+_write_lock = config_write_lock
 
 # ---------------------------------------------------------------------------
 # Internal per-job prompt (not user-editable)
@@ -23,7 +22,7 @@ _write_lock = threading.Lock()
 _SKIP_COLS = frozenset({
     # unparseable raw blobs only
     "raw_card_json", "raw_detail_json", "description_html",
-    "first_seen_run_id", "last_seen_run_id", "detail_fetched_at", "detail_error",
+    "detail_fetched_at", "detail_error",
 })
 
 JOB_PROMPT = (

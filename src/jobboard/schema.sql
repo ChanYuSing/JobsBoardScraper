@@ -1,30 +1,16 @@
 -- Shared schema for JobBoardScraper.
 -- Source-specific tables live in sources/<name>/schema.sql
 
--- One row per scraper run (audit + lifecycle reference).
-CREATE TABLE IF NOT EXISTS run (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source          TEXT NOT NULL,
-    started_at      TEXT NOT NULL,    -- ISO-8601 UTC
-    finished_at     TEXT,             -- NULL while in progress
-    status          TEXT NOT NULL,    -- 'running' / 'ok' / 'error'
-    error           TEXT,
-    total_seen      INTEGER DEFAULT 0,
-    inserted        INTEGER DEFAULT 0,
-    updated         INTEGER DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_run_source ON run(source);
-
 -- One row per scheduler-triggered run (fetch or enrich phase).
 CREATE TABLE IF NOT EXISTS scheduler_run (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     source       TEXT    NOT NULL,          -- jobsdb | linkedin_guest
     phase        TEXT    NOT NULL,          -- fetch | enrich
-    started_at   TEXT    NOT NULL,          -- ISO-8601 UTC
+    started_at   TEXT,                      -- ISO-8601 UTC; NULL while queued
     finished_at  TEXT,                      -- NULL while in progress
-    status       TEXT    NOT NULL,          -- ok | error | exhausted
-    jobs_found   INTEGER,                   -- inserted+updated on fetch runs; NULL on enrich or error
+    status       TEXT    NOT NULL,          -- queued | running | ok | error | cancelled
+    jobs_found   INTEGER,                   -- progress counter (inserted+updated for fetch; ok count for enrich)
+    jobs_total   INTEGER,                   -- total to process (NULL for fetch; set at enrich start)
     error        TEXT                       -- NULL on success
 );
 

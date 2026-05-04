@@ -1,15 +1,13 @@
 """Sources service — read and write source config params."""
 from __future__ import annotations
 
-import threading
-from pathlib import Path
 from typing import Any
 
 import yaml
 
-from ...config import JobsDBSourceCfg, LinkedInCfg, load_config
+from ...config import JobsDBSourceCfg, LinkedInCfg, config_write_lock, load_config
 
-_write_lock = threading.Lock()
+_write_lock = config_write_lock
 
 # ── field metadata for rendering the form ──────────────────────────────────
 
@@ -113,6 +111,13 @@ def save_source(config_path: str, source: str, form: dict[str, str]) -> None:
         f["key"]: _coerce_value(f["key"], form.get(f["key"], ""), fields)
         for f in fields
     }
+
+    # ── validation ──────────────────────────────────────────────────────────
+    if source == "linkedin_guest":
+        keywords = coerced.get("keywords")
+        if not keywords:
+            raise ValueError("LinkedIn requires at least one keyword — keywords cannot be empty.")
+
     with _write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}

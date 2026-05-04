@@ -5,6 +5,31 @@
 {% set source_labels = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
 <p class="page-heading">Schedule</p>
 
+{# ── status bar ── #}
+<div class="sched-status-bar">
+  <span>
+    Scheduled runs:
+    {% if sched.enabled %}
+      <strong class="sched-status--on">Enabled</strong>
+    {% else %}
+      <strong class="sched-status--off">Disabled</strong>
+    {% endif %}
+    {% if running %}<span class="badge badge-running sched-run-badge">run active</span>{% endif %}
+  </span>
+  <div class="sched-status-actions">
+    <form method="post" action="/schedule/run-all">
+      <button type="submit" class="outline secondary sched-toggle-btn">▶ Run All Now</button>
+    </form>
+    <form method="post" action="/schedule/toggle-enabled">
+      {% if sched.enabled %}
+        <button type="submit" class="outline secondary sched-toggle-btn">⏸ Disable</button>
+      {% else %}
+        <button type="submit" class="outline sched-toggle-btn">▶ Enable</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
 <div class="sched-grid">
 
   {# ── left: run settings ── #}
@@ -60,89 +85,44 @@
         {% endfor %}
       </div>
 
-      <div class="sched-2col">
-        <label>
-          Retry delay (min)
-          <input type="number" name="retry_delay_minutes" min="1" value="{{ sched.retry_delay_minutes }}"/>
-        </label>
-        <label>
-          Max retries
-          <input type="number" name="max_retries" min="0" value="{{ sched.max_retries }}"/>
-        </label>
-      </div>
-
       <button type="submit" class="sched-save-btn">Save</button>
-    </form>
-    <form method="post" action="/schedule/run-all" class="sched-run-form">
-      <button type="submit" class="secondary outline sched-run-btn">▶ Run All Now</button>
     </form>
   </article>
 
-  {# ── right: last run status ── #}
+  {# ── right: scraper settings ── #}
   <article>
-    <header><strong>Last run status</strong></header>
-    {% if last_runs %}
-      <table class="sched-table">
-        <thead>
-          <tr><th>Source</th><th>Phase</th><th>When</th><th>Status</th><th>Jobs</th></tr>
-        </thead>
-        <tbody>
-          {% for source, r in last_runs.items() %}
-          <tr>
-            <td>{{ source_labels.get(source, source) }}</td>
-            <td>{{ r.phase }}</td>
-            <td>{{ r.started_at[:16] if r.started_at else "—" }}</td>
-            <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-            <td>{{ r.jobs_found if r.jobs_found is not none else "—" }}</td>
-          </tr>
-          {% if r.error %}
-          <tr>
-            <td colspan="5" class="sched-error-cell">{{ r.error[:200] }}</td>
-          </tr>
-          {% endif %}
-          {% endfor %}
-        </tbody>
-      </table>
-      <p class="sched-viewlog"><a href="/runs">View full run log →</a></p>
-    {% else %}
-      <p class="sched-empty">No runs yet.</p>
-    {% endif %}
+    <header><strong>Scraper settings</strong></header>
+    <form method="post" action="/schedule/scraper-save">
+      <div class="sched-scraper-grid">
+        <label>
+          Request timeout (s)
+          <input type="number" name="request_timeout_seconds" min="1" value="{{ scraper.request_timeout_seconds }}"/>
+          <span class="source-hint">per-request HTTP timeout</span>
+        </label>
+        <label>
+          Retries
+          <input type="number" name="retries" min="0" value="{{ scraper.retries }}"/>
+          <span class="source-hint">HTTP retries on failure</span>
+        </label>
+        <label>
+          Jitter min (ms)
+          <input type="number" name="jitter_ms_min" min="0" value="{{ scraper.jitter_ms_min }}"/>
+          <span class="source-hint">random delay lower bound</span>
+        </label>
+        <label>
+          Jitter max (ms)
+          <input type="number" name="jitter_ms_max" min="0" value="{{ scraper.jitter_ms_max }}"/>
+          <span class="source-hint">random delay upper bound</span>
+        </label>
+        <label class="sched-field--full">
+          User agent
+          <input type="text" name="user_agent" value="{{ scraper.user_agent }}"/>
+          <span class="source-hint">browser identity sent with requests</span>
+        </label>
+      </div>
+      <button type="submit" class="sched-save-btn">Save scraper settings</button>
+    </form>
   </article>
 
 </div>
-
-{# ── scraper settings ── #}
-<article class="sched-scraper-card">
-  <header><strong>Scraper settings</strong></header>
-  <form method="post" action="/schedule/scraper-save">
-    <div class="sched-scraper-grid">
-      <label>
-        Request timeout (s)
-        <input type="number" name="request_timeout_seconds" min="1" value="{{ scraper.request_timeout_seconds }}"/>
-        <span class="source-hint">per-request HTTP timeout</span>
-      </label>
-      <label>
-        Retries
-        <input type="number" name="retries" min="0" value="{{ scraper.retries }}"/>
-        <span class="source-hint">HTTP retries on failure</span>
-      </label>
-      <label>
-        Jitter min (ms)
-        <input type="number" name="jitter_ms_min" min="0" value="{{ scraper.jitter_ms_min }}"/>
-        <span class="source-hint">random delay lower bound</span>
-      </label>
-      <label>
-        Jitter max (ms)
-        <input type="number" name="jitter_ms_max" min="0" value="{{ scraper.jitter_ms_max }}"/>
-        <span class="source-hint">random delay upper bound</span>
-      </label>
-      <label class="sched-field--full">
-        User agent
-        <input type="text" name="user_agent" value="{{ scraper.user_agent }}"/>
-        <span class="source-hint">browser identity sent with requests</span>
-      </label>
-    </div>
-    <button type="submit" class="sched-save-btn">Save scraper settings</button>
-  </form>
-</article>
 {% endblock %}

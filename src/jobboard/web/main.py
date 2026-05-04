@@ -6,19 +6,13 @@ Run with:
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
-from ..db import connect, init_schema, sync_fields_full
-from ..scheduler import build_scheduler
+from ..db import connect, init_schema, sweep_orphan_runs, sync_fields_full
+from ..scheduler import build_scheduler, start_queue_worker
 from .deps import CONFIG_PATH, get_config
 from .routes import jobs, runs, schedule, sources, analyse
-
-TEMPLATES_DIR = Path(__file__).parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 _scheduler = None
 
@@ -30,12 +24,15 @@ async def lifespan(app: FastAPI):
     conn = connect(cfg.storage.sqlite_path)
     try:
         init_schema(conn)
+        sweep_orphan_runs(conn)
         sync_fields_full(conn, cfg.ai.fields)
     finally:
         conn.close()
-    if cfg.scheduler.cron:
+    if cfg.scheduler.cron and cfg.scheduler.enabled and cfg.enabled_sources():
         _scheduler = build_scheduler(cfg)
         _scheduler.start()
+    app.state.scheduler = _scheduler
+    start_queue_worker()
     yield
     if _scheduler:
         _scheduler.shutdown(wait=False)

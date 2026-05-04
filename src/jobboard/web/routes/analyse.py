@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 
-from ..deps import CONFIG_PATH, get_db
+from ..deps import CONFIG_PATH, get_db, templates
 from ..services.analyse import (
     build_preview_prompts,
     get_ai_config,
@@ -19,7 +17,6 @@ from ..services.analyse import (
 )
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
 
 
 def _form_ai(form) -> dict:

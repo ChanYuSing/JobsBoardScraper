@@ -16,12 +16,8 @@ from .sources.jobsdb.adapter import (
     TransientServerError,
 )
 from .config import Config, load_config
-from .db import (
-    connect,
-    finish_run,
-    init_schema,
-    start_run,
-)
+from .db import connect, init_schema
+from .scheduler_db import log_run_finish, log_run_start, set_run_jobs_total, update_run_jobs_found
 from .sources import KNOWN_SOURCES, build_adapter
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -64,7 +60,7 @@ def _resolve_sources(cfg: Config, source_arg: str) -> list[str]:
 def fetch(
     source: str = typer.Option(
         "all", "--source", "-s",
-        help="Source name (jobsdb, jobspy_linkedin, ...) or 'all'.",
+        help="Source name (jobsdb, linkedin_guest, ...) or 'all'.",
     ),
     config_path: Path = typer.Option(
         Path("config.yaml"), "--config", "-c", help="Path to config.yaml"
@@ -120,19 +116,15 @@ def fetch(
 
 def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
     log.info("--- fetch source=%s ---", source)
-    run_id = start_run(conn, source)
+    run_id = log_run_start(conn, source, "fetch")
     log.info("Starting run id=%d source=%s", run_id, source)
 
-    inserted = updated = total_seen = 0
+    inserted = updated = 0
     try:
         adapter = build_adapter(source, cfg)
     except Exception as exc:  # noqa: BLE001
         log.error("Could not build adapter for %s: %s", source, exc)
-        finish_run(
-            conn, run_id, status="error",
-            total_seen=0, inserted=0, updated=0,
-            error=f"adapter init failed: {exc}",
-        )
+        log_run_finish(conn, run_id, status="error", error=f"adapter init failed: {exc}")
         return 1
 
     error_msg: str | None = None
@@ -150,13 +142,13 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                         log.info("Page %d: %d jobs (totalCount=%s)",
                                  page, len(recs), total)
                         for rec in recs:
-                            outcome = jdb_db.upsert_card(conn, rec, run_id)
+                            outcome = jdb_db.upsert_card(conn, rec)
                             if outcome == "inserted":
                                 inserted += 1
                             else:
                                 updated += 1
-                            total_seen += 1
                         conn.commit()
+                        update_run_jobs_found(conn, run_id, inserted + updated)
                         last_page_done = page
                 except CloudflareBlockedError as exc:
                     cf_blocked = True
@@ -172,13 +164,16 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                 if source == "linkedin_guest":
                     from .sources.linkedin import db as li_db
                     for card in adapter.search():
-                        outcome = li_db.upsert_card(conn, card, run_id)
+                        outcome = li_db.upsert_card(conn, card)
                         if outcome == "inserted":
                             inserted += 1
                         else:
                             updated += 1
-                        total_seen += 1
+                        if (inserted + updated) % 20 == 0:
+                            conn.commit()
+                            update_run_jobs_found(conn, run_id, inserted + updated)
                 conn.commit()
+                update_run_jobs_found(conn, run_id, inserted + updated)
     except CloudflareBlockedError as exc:
         cf_blocked = True
         error_msg = f"CloudflareBlocked: {exc}"
@@ -188,25 +183,16 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
         log.exception("Fetch failed for source %s", source)
 
     if error_msg:
-        finish_run(
-            conn, run_id, status="error",
-            total_seen=total_seen, inserted=inserted, updated=updated,
-            error=error_msg,
-        )
+        log_run_finish(conn, run_id, status="error",
+                       jobs_found=inserted + updated, error=error_msg)
         typer.echo(
-            f"[{source}] Run {run_id}: ERROR  seen={total_seen}  "
-            f"inserted={inserted}  updated={updated}  -- {error_msg}"
+            f"[{source}] Run {run_id}: ERROR  inserted={inserted}  updated={updated}"
+            f"  -- {error_msg}"
         )
         return 2 if cf_blocked else 1
 
-    finish_run(
-        conn, run_id, status="ok",
-        total_seen=total_seen, inserted=inserted, updated=updated,
-    )
-    typer.echo(
-        f"[{source}] Run {run_id}: ok  seen={total_seen}  "
-        f"inserted={inserted}  updated={updated}"
-    )
+    log_run_finish(conn, run_id, status="ok", jobs_found=inserted + updated)
+    typer.echo(f"[{source}] Run {run_id}: ok  inserted={inserted}  updated={updated}")
     return 0
 
 
@@ -276,25 +262,107 @@ def new_jobs(
 def list_runs(
     config_path: Path = typer.Option(Path("config.yaml"), "--config", "-c"),
     source: str = typer.Option("all", "--source", "-s"),
+    status: str = typer.Option("", "--status", help="Filter by status (ok, error, running, cancelled)."),
     limit: int = typer.Option(20, "--limit", "-n"),
 ) -> None:
     """Show recent scraper runs."""
     conn = _open_db(config_path)
-    sql = (
-        "SELECT id, source, started_at, finished_at, status, "
-        "       total_seen, inserted, updated, error FROM run"
-    )
-    args: list = []
+    where, args = [], []
     if source != "all":
-        sql += " WHERE source = ?"
+        where.append("source = ?")
         args.append(source)
-    sql += " ORDER BY id DESC LIMIT ?"
+    if status:
+        where.append("status = ?")
+        args.append(status)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    sql = (
+        f"SELECT id, source, phase, started_at, finished_at, status, jobs_found, error "
+        f"FROM scheduler_run {clause} ORDER BY id DESC LIMIT ?"
+    )
     args.append(limit)
     rows = conn.execute(sql, args).fetchall()
-    _print_rows(
-        rows,
-        ("id", "source", "started_at", "status", "total_seen", "inserted", "updated"),
-    )
+    conn.close()
+    _print_rows(rows, ("id", "source", "phase", "started_at", "status", "jobs_found", "error"))
+
+
+@app.command(name="runs-kill")
+def runs_kill(
+    config_path: Path = typer.Option(Path("config.yaml"), "--config", "-c"),
+) -> None:
+    """Send a cancel signal to stop the currently running fetch/enrich."""
+    from .scheduler import _cancel_file
+    cfg = load_config(config_path)
+    cancel_path = _cancel_file(cfg.storage.sqlite_path)
+    cancel_path.touch()
+    typer.echo(f"Kill signal sent — the running job will stop at the next checkpoint.")
+    typer.echo(f"(Sentinel: {cancel_path})")
+
+
+@app.command(name="runs-delete")
+def runs_delete(
+    ids: list[int] = typer.Argument(None, help="Run IDs to delete. Omit to delete all non-running records."),
+    config_path: Path = typer.Option(Path("config.yaml"), "--config", "-c"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt."),
+) -> None:
+    """Delete run records by ID, or all non-running records if no IDs given."""
+    from .scheduler_db import delete_runs_by_ids, purge_all_runs
+
+    conn = _open_db(config_path)
+    try:
+        if ids:
+            if not yes:
+                typer.confirm(f"Delete run records {ids}?", abort=True)
+            deleted = delete_runs_by_ids(conn, list(ids))
+            typer.echo(f"Deleted {deleted} record(s).")
+        else:
+            if not yes:
+                typer.confirm("Delete ALL non-running run records?", abort=True)
+            deleted = purge_all_runs(conn)
+            typer.echo(f"Deleted {deleted} record(s).")
+    finally:
+        conn.close()
+
+
+@app.command(name="run")
+def run_now(
+    source: str = typer.Option(
+        "all", "--source", "-s",
+        help="Source name or 'all'. Runs fetch then enrich sequentially.",
+    ),
+    config_path: Path = typer.Option(Path("config.yaml"), "--config", "-c"),
+    fetch_only: bool = typer.Option(False, "--fetch-only", help="Run fetch phase only."),
+    enrich_only: bool = typer.Option(False, "--enrich-only", help="Run enrich phase only."),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Fetch + enrich for one or all sources (equivalent to Run Now in the web UI).
+
+    Runs phases sequentially: all fetches first, then all enriches.
+    Use --fetch-only or --enrich-only to run a single phase.
+    """
+    _setup_logging(verbose)
+    from .scheduler import _run_all
+
+    if fetch_only and enrich_only:
+        typer.echo("Error: --fetch-only and --enrich-only are mutually exclusive.", err=True)
+        raise typer.Exit(code=1)
+
+    phases: list[str] | None
+    if fetch_only:
+        phases = ["fetch"]
+    elif enrich_only:
+        phases = ["enrich"]
+    else:
+        phases = None  # both
+
+    cfg = load_config(config_path)
+    sources = _resolve_sources(cfg, source)
+    typer.echo(f"Queuing run for: {', '.join(sources)}  phases={phases or 'fetch+enrich'}")
+    try:
+        _run_all(sources, str(config_path), cfg.storage.sqlite_path, phases=phases)
+    except Exception as exc:
+        typer.echo(f"Run failed: {exc}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo("Done. Check 'jobboard runs' for results.")
 
 
 # ---------------------------------------------------------------------------
@@ -373,11 +441,15 @@ def _enrich_one(
         log.error("[%s] No enrich path configured for this source.", source)
         return 1
 
+    run_id = log_run_start(conn, source, "enrich")
+
     if not job_ids:
         typer.echo(f"[{source}] Nothing to enrich.")
+        log_run_finish(conn, run_id, status="ok", jobs_found=0)
         return 0
 
     typer.echo(f"[{source}] Enriching {len(job_ids)} job(s)...")
+    set_run_jobs_total(conn, run_id, len(job_ids))
     ok = err = 0
     blocked = False
     with adapter:
@@ -413,6 +485,7 @@ def _enrich_one(
                 err += 1
             conn.commit()
             if i % 10 == 0 or i == len(job_ids):
+                update_run_jobs_found(conn, run_id, ok)
                 log.info("[%s] progress: %d/%d  ok=%d err=%d",
                          source, i, len(job_ids), ok, err)
             sleep_jitter = getattr(adapter, "sleep_jitter", None)
@@ -420,11 +493,14 @@ def _enrich_one(
                 sleep_jitter()
 
     if blocked:
+        log_run_finish(conn, run_id, status="error", jobs_found=ok,
+                       error=f"blocked by Cloudflare/rate-limit — ok={ok} err={err} remaining={len(job_ids)-ok-err}")
         typer.echo(
             f"[{source}] Enrich BLOCKED. ok={ok}  err={err}  "
             f"remaining={len(job_ids) - ok - err}. Wait, then rerun."
         )
         return 2
+    log_run_finish(conn, run_id, status="ok", jobs_found=ok)
     typer.echo(f"[{source}] Enrich done. ok={ok}  err={err}  total={len(job_ids)}")
     return 0
 

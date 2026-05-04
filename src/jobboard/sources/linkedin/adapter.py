@@ -51,12 +51,13 @@ class LinkedInAdapter:
         self._cfg = cfg
         self._ua = scraper_cfg.user_agent
         self._timeout = scraper_cfg.request_timeout_seconds
+        self._client = httpx.Client(timeout=self._timeout, follow_redirects=True)
 
     def __enter__(self) -> "LinkedInAdapter":
         return self
 
     def __exit__(self, *exc: object) -> None:
-        pass
+        self._client.close()
 
     def sleep_jitter(self) -> None:
         """Rate-limiting pause between enrich requests."""
@@ -113,35 +114,35 @@ class LinkedInAdapter:
 
         fetched = 0
         consecutive_empty = 0
-        with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
-            while True:
-                params["start"] = fetched
-                r = self._get_with_retry(client, _SEARCH_URL, params)
-                if r is None:
+        client = self._client
+        while True:
+            params["start"] = fetched
+            r = self._get_with_retry(client, _SEARCH_URL, params)
+            if r is None:
+                break
+
+            cards = BeautifulSoup(r.text, "html.parser").find_all(
+                "div", class_="base-search-card"
+            )
+            got = len(cards)
+            log.info("[%s] term=%r start=%d: %d cards", self.name, term, fetched, got)
+
+            if got == 0:
+                consecutive_empty += 1
+                if consecutive_empty >= 2:
                     break
-
-                cards = BeautifulSoup(r.text, "html.parser").find_all(
-                    "div", class_="base-search-card"
-                )
-                got = len(cards)
-                log.info("[%s] term=%r start=%d: %d cards", self.name, term, fetched, got)
-
-                if got == 0:
-                    consecutive_empty += 1
-                    if consecutive_empty >= 2:
-                        break
-                    # Wait and retry once before giving up on this term.
-                    time.sleep(random.uniform(*_DELAY))
-                    continue
-
-                consecutive_empty = 0
-                for card in cards:
-                    rec = self._parse_card(card)
-                    if rec is not None:
-                        yield rec
-
-                fetched += got
+                # Wait and retry once before giving up on this term.
                 time.sleep(random.uniform(*_DELAY))
+                continue
+
+            consecutive_empty = 0
+            for card in cards:
+                rec = self._parse_card(card)
+                if rec is not None:
+                    yield rec
+
+            fetched += got
+            time.sleep(random.uniform(*_DELAY))
 
         log.info("[%s] term=%r: %d total cards fetched", self.name, term, fetched)
 
@@ -170,7 +171,6 @@ class LinkedInAdapter:
                 log.error("[%s] HTTP %d: %s", self.name, r.status_code, exc)
                 return None
             return r
-        return None
 
     def _parse_card(self, card) -> LinkedInCard | None:
         urn = card.get("data-entity-urn", "")
@@ -223,9 +223,8 @@ class LinkedInAdapter:
     def fetch_detail(self, job_id: str) -> dict[str, Any]:
         """Fetch the detail page for a single job. Returns raw payload dict."""
         url = _DETAIL_URL.format(job_id=job_id)
-        with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
-            r = client.get(url, headers=_headers(self._ua))
-            r.raise_for_status()
+        r = self._client.get(url, headers=_headers(self._ua))
+        r.raise_for_status()
         return {"job_id": job_id, "html": r.text}
 
     def parse_detail(self, payload: dict[str, Any]) -> LinkedInDetail:

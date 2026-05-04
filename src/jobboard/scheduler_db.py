@@ -19,11 +19,49 @@ def log_run_start(conn: sqlite3.Connection, source: str, phase: str) -> int:
     return int(cur.lastrowid)
 
 
+def log_run_queued(conn: sqlite3.Connection, source: str, phase: str) -> int:
+    """Insert a queued scheduler_run row (not yet started); return its id."""
+    cur = conn.execute(
+        "INSERT INTO scheduler_run (source, phase, status) VALUES (?, ?, 'queued')",
+        (source, phase),
+    )
+    conn.commit()
+    return int(cur.lastrowid)
+
+
+def mark_run_active(conn: sqlite3.Connection, run_id: int) -> bool:
+    """Transition a 'queued' row to 'running'. Returns False if already gone/cancelled."""
+    cur = conn.execute(
+        "UPDATE scheduler_run SET started_at = ?, status = 'running' WHERE id = ? AND status = 'queued'",
+        (_now_iso(), run_id),
+    )
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def update_run_jobs_found(conn: sqlite3.Connection, run_id: int, count: int) -> None:
+    """Write partial progress to jobs_found while a run is still active."""
+    conn.execute(
+        "UPDATE scheduler_run SET jobs_found = ? WHERE id = ? AND status = 'running'",
+        (count, run_id),
+    )
+    conn.commit()
+
+
+def set_run_jobs_total(conn: sqlite3.Connection, run_id: int, total: int) -> None:
+    """Store the total number of items to process (used for enrich phase)."""
+    conn.execute(
+        "UPDATE scheduler_run SET jobs_total = ? WHERE id = ?",
+        (total, run_id),
+    )
+    conn.commit()
+
+
 def log_run_finish(
     conn: sqlite3.Connection,
     run_id: int,
     *,
-    status: str,                   # ok | error | exhausted
+    status: str,                   # ok | error | cancelled
     jobs_found: int | None = None,
     error: str | None = None,
 ) -> None:
@@ -40,3 +78,65 @@ def log_run_finish(
         (_now_iso(), status, jobs_found, error, run_id),
     )
     conn.commit()
+
+
+def cancel_running_rows(conn: sqlite3.Connection) -> int:
+    """Mark all 'running' rows as 'cancelled' (user-initiated kill).
+
+    Returns the number of rows updated.
+    """
+    cur = conn.execute(
+        """
+        UPDATE scheduler_run
+           SET finished_at = ?, status = 'cancelled',
+               error = 'cancelled by user'
+         WHERE status = 'running'
+        """,
+        (_now_iso(),),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def cancel_run_by_id(conn: sqlite3.Connection, run_id: int) -> int:
+    """Mark a specific run row as 'cancelled'.
+
+    Returns 1 if the row was updated, 0 if not found or not running.
+    """
+    cur = conn.execute(
+        """
+        UPDATE scheduler_run
+           SET finished_at = ?, status = 'cancelled',
+               error = 'cancelled by user'
+         WHERE id = ? AND status = 'running'
+        """,
+        (_now_iso(), run_id),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def purge_all_runs(conn: sqlite3.Connection) -> int:
+    """Delete every run record that is not currently 'running'.
+
+    Returns the number of rows deleted.
+    """
+    cur = conn.execute("DELETE FROM scheduler_run WHERE status != 'running'")
+    conn.commit()
+    return cur.rowcount
+
+
+def delete_runs_by_ids(conn: sqlite3.Connection, ids: list[int]) -> int:
+    """Delete specific run records by id. Running rows are protected.
+
+    Returns the number of rows deleted.
+    """
+    if not ids:
+        return 0
+    placeholders = ",".join("?" * len(ids))
+    cur = conn.execute(
+        f"DELETE FROM scheduler_run WHERE id IN ({placeholders}) AND status != 'running'",
+        ids,
+    )
+    conn.commit()
+    return cur.rowcount

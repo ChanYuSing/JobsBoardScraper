@@ -34,7 +34,7 @@ UpsertOutcome = Literal["inserted", "updated"]
 
 
 def upsert_card(
-    conn: sqlite3.Connection, card: LinkedInCard, run_id: int
+    conn: sqlite3.Connection, card: LinkedInCard
 ) -> UpsertOutcome:
     """Insert a new LinkedIn job or refresh an existing one. Returns outcome."""
     now = _now_iso()
@@ -50,13 +50,11 @@ def upsert_card(
                 job_id, url, title, company, company_url, company_logo_url,
                 location, date_posted, benefit_text,
                 first_seen_at, last_seen_at,
-                first_seen_run_id, last_seen_run_id,
                 raw_card_json
             ) VALUES (
                 :job_id, :url, :title, :company, :company_url, :company_logo_url,
                 :location, :date_posted, :benefit_text,
                 :now, :now,
-                :run_id, :run_id,
                 :raw_card_json
             )
             """,
@@ -71,7 +69,6 @@ def upsert_card(
                 "date_posted":      card.date_posted,
                 "benefit_text":     card.benefit_text,
                 "now":              now,
-                "run_id":           run_id,
                 "raw_card_json":    card.raw_card_json,
             },
         )
@@ -89,7 +86,6 @@ def upsert_card(
             date_posted      = :date_posted,
             benefit_text     = COALESCE(:benefit_text,     benefit_text),
             last_seen_at     = :now,
-            last_seen_run_id = :run_id,
             raw_card_json    = :raw_card_json
          WHERE job_id = :job_id
         """,
@@ -104,7 +100,6 @@ def upsert_card(
             "date_posted":      card.date_posted,
             "benefit_text":     card.benefit_text,
             "now":              now,
-            "run_id":           run_id,
             "raw_card_json":    card.raw_card_json,
         },
     )

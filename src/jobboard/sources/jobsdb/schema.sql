@@ -30,8 +30,6 @@ CREATE TABLE IF NOT EXISTS job_jobsdb (
     -- provenance
     first_seen_at       TEXT NOT NULL,   -- ISO-8601 UTC
     last_seen_at        TEXT NOT NULL,
-    first_seen_run_id   INTEGER REFERENCES run(id),
-    last_seen_run_id    INTEGER REFERENCES run(id),
     detail_fetched_at   TEXT,
     detail_error        TEXT,
 
@@ -42,5 +40,4 @@ CREATE TABLE IF NOT EXISTS job_jobsdb (
 
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_first_seen     ON job_jobsdb(first_seen_at);
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_detail_fetched ON job_jobsdb(detail_fetched_at);
-CREATE INDEX IF NOT EXISTS idx_job_jobsdb_last_seen_run  ON job_jobsdb(last_seen_run_id);
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_listing_date   ON job_jobsdb(listing_date_utc);

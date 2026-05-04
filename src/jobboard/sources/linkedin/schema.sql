@@ -27,8 +27,6 @@ CREATE TABLE IF NOT EXISTS job_linkedin (
     -- provenance
     first_seen_at       TEXT NOT NULL,   -- ISO-8601 UTC
     last_seen_at        TEXT NOT NULL,
-    first_seen_run_id   INTEGER REFERENCES run(id),
-    last_seen_run_id    INTEGER REFERENCES run(id),
     detail_fetched_at   TEXT,
     detail_error        TEXT,
 
@@ -39,5 +37,4 @@ CREATE TABLE IF NOT EXISTS job_linkedin (
 
 CREATE INDEX IF NOT EXISTS idx_job_linkedin_first_seen      ON job_linkedin(first_seen_at);
 CREATE INDEX IF NOT EXISTS idx_job_linkedin_detail_fetched  ON job_linkedin(detail_fetched_at);
-CREATE INDEX IF NOT EXISTS idx_job_linkedin_last_seen_run   ON job_linkedin(last_seen_run_id);
 CREATE INDEX IF NOT EXISTS idx_job_linkedin_date_posted     ON job_linkedin(date_posted);

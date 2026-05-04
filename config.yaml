@@ -3,7 +3,7 @@ sources:
     enabled: true
     keywords: null
     location: Hong Kong SAR
-    daterange: '3'
+    daterange: '1'
     work_arrangement: null
     work_type: null
     classification: null
@@ -17,7 +17,10 @@ sources:
   linkedin_guest:
     enabled: true
     location: Hong Kong
-    keywords: null
+    keywords:
+    - machine learning
+    - quant
+    - analyst
     hours_old: 720
     job_type: null
     is_remote: null
@@ -43,6 +46,7 @@ scheduler:
   - linkedin_guest
   retry_delay_minutes: 60
   max_retries: 3
+  enabled: true
 ai:
   system_prompt: "You are an honest career advisor. Given a candidate CV and a job\
     \ listing, score the job on each criterion below.\r\n\r\nBe objective — do not\

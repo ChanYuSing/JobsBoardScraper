@@ -4,6 +4,10 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from ...scheduler_db import purge_all_runs, delete_runs_by_ids  # re-export for routes
+
+__all__ = ["list_runs", "distinct_sources", "purge_all_runs", "delete_runs_by_ids"]
+
 
 def list_runs(
     conn: sqlite3.Connection,
@@ -28,19 +32,19 @@ def list_runs(
     rows = conn.execute(
         f"""
         SELECT id, source, phase, started_at, finished_at,
-               status, jobs_found, error,
-               ROUND((JULIANDAY(COALESCE(finished_at, DATETIME('now')))
-                      - JULIANDAY(started_at)) * 86400) AS duration_sec
+               status, jobs_found, jobs_total, error,
+               CASE WHEN started_at IS NULL THEN NULL
+                    ELSE ROUND((JULIANDAY(COALESCE(finished_at, DATETIME('now')))
+                                - JULIANDAY(started_at)) * 86400)
+               END AS duration_sec
         FROM scheduler_run
         {clause}
-        ORDER BY started_at DESC
+        ORDER BY id DESC
         LIMIT ?
         """,
         params + [limit],
     ).fetchall()
-    cols = ["id", "source", "phase", "started_at", "finished_at",
-            "status", "jobs_found", "error", "duration_sec"]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(r) for r in rows]
 
 
 def distinct_sources(conn: sqlite3.Connection) -> list[str]:

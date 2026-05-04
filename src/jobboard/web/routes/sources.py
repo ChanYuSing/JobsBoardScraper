@@ -1,18 +1,13 @@
 """Sources routes."""
 from __future__ import annotations
 
-import threading
-from pathlib import Path
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
-from ..deps import CONFIG_PATH
+from ..deps import CONFIG_PATH, templates
 from ..services.sources import SOURCE_FIELDS, get_sources, save_source
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parents[1] / "templates"))
 
 
 @router.get("/sources", response_class=HTMLResponse)
@@ -54,21 +49,29 @@ async def save(name: str, request: Request):
 
 @router.post("/sources/{name}/run")
 def run_now(name: str):
-    """Trigger fetch+enrich for one source in a background thread."""
-    from ...scheduler import _run_all
+    """Queue fetch then enrich for one source."""
+    from ...scheduler import enqueue_run
     from ..deps import CONFIG_PATH, get_config
-
     cfg = get_config()
-    db_path = cfg.storage.sqlite_path
+    enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch", "enrich"])
+    return RedirectResponse(f"/sources?flash=Fetch+%2B+enrich+queued+for+{name}.", status_code=303)
 
-    def _go():
-        try:
-            _run_all([name], CONFIG_PATH, db_path)
-        except Exception:
-            pass  # errors already logged inside _run_all
 
-    threading.Thread(target=_go, daemon=True, name=f"run_now_{name}").start()
-    return RedirectResponse(
-        f"/sources?flash=Started+run+for+{name}.+Check+Runs+page+for+status.",
-        status_code=303,
-    )
+@router.post("/sources/{name}/fetch")
+def fetch_now(name: str):
+    """Queue fetch-only for one source."""
+    from ...scheduler import enqueue_run
+    from ..deps import CONFIG_PATH, get_config
+    cfg = get_config()
+    enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch"])
+    return RedirectResponse(f"/sources?flash=Fetch+queued+for+{name}.", status_code=303)
+
+
+@router.post("/sources/{name}/enrich")
+def enrich_now(name: str):
+    """Queue enrich-only for one source."""
+    from ...scheduler import enqueue_run
+    from ..deps import CONFIG_PATH, get_config
+    cfg = get_config()
+    enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["enrich"])
+    return RedirectResponse(f"/sources?flash=Enrich+queued+for+{name}.", status_code=303)

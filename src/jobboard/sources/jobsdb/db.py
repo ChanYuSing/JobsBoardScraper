@@ -34,7 +34,7 @@ UpsertOutcome = Literal["inserted", "updated"]
 
 
 def upsert_card(
-    conn: sqlite3.Connection, card: JobsDBCard, run_id: int
+    conn: sqlite3.Connection, card: JobsDBCard
 ) -> UpsertOutcome:
     """Insert a new JobsDB job or refresh an existing one. Returns outcome."""
     now = _now_iso()
@@ -53,7 +53,6 @@ def upsert_card(
                 teaser, bullet_points,
                 listing_date_utc, listing_date_label,
                 first_seen_at, last_seen_at,
-                first_seen_run_id, last_seen_run_id,
                 raw_card_json
             ) VALUES (
                 :job_id, :url, :title, :company, :location,
@@ -62,7 +61,6 @@ def upsert_card(
                 :teaser, :bullet_points,
                 :listing_date_utc, :listing_date_label,
                 :now, :now,
-                :run_id, :run_id,
                 :raw_card_json
             )
             """,
@@ -82,7 +80,6 @@ def upsert_card(
                 "listing_date_utc":  card.listing_date_utc,
                 "listing_date_label": card.listing_date_label,
                 "now":               now,
-                "run_id":            run_id,
                 "raw_card_json":     card.raw_card_json,
             },
         )
@@ -105,7 +102,6 @@ def upsert_card(
             listing_date_utc   = :listing_date_utc,
             listing_date_label = :listing_date_label,
             last_seen_at       = :now,
-            last_seen_run_id   = :run_id,
             raw_card_json      = :raw_card_json
          WHERE job_id = :job_id
         """,
@@ -125,7 +121,6 @@ def upsert_card(
             "listing_date_utc":  card.listing_date_utc,
             "listing_date_label": card.listing_date_label,
             "now":               now,
-            "run_id":            run_id,
             "raw_card_json":     card.raw_card_json,
         },
     )

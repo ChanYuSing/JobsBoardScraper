@@ -3,66 +3,55 @@
 
 {% block content %}
 {% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
-<p class="page-heading">Runs</p>
+{% set has_active = runs | selectattr("status", "in", ["running", "queued"]) | list | length > 0 %}
 
-<form method="get" action="/runs" class="filter-form">
-  <label>
-    Source
-    <select name="source">
-      <option value="">All sources</option>
-      {% for s in sources %}
-        <option value="{{ s }}" {% if filter_source == s %}selected{% endif %}>{{ src_label.get(s, s) }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label>
-    Status
-    <select name="status">
-      <option value="">All statuses</option>
-      {% for st in ["ok","error","exhausted","running"] %}
-        <option value="{{ st }}" {% if filter_status == st %}selected{% endif %}>{{ st | capitalize }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label class="filter-label--wide">
-    From date
-    <input type="date" name="date_from" value="{{ filter_date_from }}"/>
-  </label>
-  <div class="filter-btns">
-    <button type="submit">Filter</button>
-    <a href="/runs" role="button" class="secondary outline">Clear</a>
-  </div>
-</form>
+<div class="runs-heading">
+  <p class="page-heading" style="margin:0">Runs</p>
+  <a id="refreshBtn" href="/runs" role="button" class="runs-refresh-btn outline secondary" {% if not has_active %}style="display:none"{% endif %}>&#8635; Refresh</a>
+</div>
 
 {% if runs %}
 <figure>
 <table>
   <thead>
     <tr>
-      <th>ID</th>
-      <th>Source</th>
-      <th>Phase</th>
-      <th>Started</th>
-      <th>Duration</th>
-      <th>Status</th>
-      <th>Jobs</th>
-      <th>Error</th>
+      <th>ID</th><th>Source</th><th>Phase</th><th>Started</th>
+      <th>Duration</th><th>Status</th><th>Jobs</th><th>Error</th>
+      <th class="runs-del-col"></th>
     </tr>
   </thead>
   <tbody>
     {% for r in runs %}
     <tr>
       <td>{{ r.id }}</td>
-      <td>{{ r.source }}</td>
+      <td>{{ src_label.get(r.source, r.source) }}</td>
       <td>{{ r.phase }}</td>
-      <td>{{ r.started_at[:16] if r.started_at else "—" }}</td>
-      <td>{% if r.duration_sec is not none %}{{ r.duration_sec | int }}s{% else %}—{% endif %}</td>
-      <td>
-        <span class="badge badge-{{ r.status }}">{{ r.status }}</span>
+      <td>{{ r.started_at | localdt }}</td>
+      <td id="dur-{{ r.id }}"{% if r.status == 'running' and r.started_at %} data-started="{{ r.started_at }}"{% endif %}>{% if r.duration_sec is not none %}{{ r.duration_sec | int }}s{% else %}—{% endif %}</td>
+      <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+      <td id="jobs-{{ r.id }}">
+        {%- if r.jobs_found is not none -%}
+          {%- if r.phase == 'enrich' and r.jobs_total is not none -%}
+            {{ r.jobs_found }} / {{ r.jobs_total }}
+          {%- else -%}
+            {{ r.jobs_found }}
+          {%- endif -%}
+        {%- else -%}—{%- endif -%}
       </td>
-      <td>{{ r.jobs_found if r.jobs_found is not none else "—" }}</td>
-      <td class="runs-error-cell">
-        {{ r.error[:120] ~ "…" if r.error and r.error|length > 120 else (r.error or "") }}
+      <td class="runs-error-cell">{{ r.error[:120] ~ "…" if r.error and r.error|length > 120 else (r.error or "") }}</td>
+      <td class="runs-del-col">
+        {% if r.status == 'running' %}
+        <form method="post" action="/runs/kill-run" class="runs-inline-form">
+          <input type="hidden" name="run_id" value="{{ r.id }}"/>
+          <button type="submit" class="runs-kill-btn outline" title="Kill run">⏹</button>
+        </form>
+        {% else %}
+        <form method="post" action="/runs/delete-selected" class="runs-inline-form"
+              onsubmit="return confirm('Delete this run record?')">
+          <input type="hidden" name="run_ids" value="{{ r.id }}"/>
+          <button type="submit" class="runs-row-del-btn outline" title="Delete">✕</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -71,5 +60,40 @@
 </figure>
 {% else %}
 <p>No runs found.</p>
+{% endif %}
+
+{% if has_active %}
+<script>
+(function () {
+  var es = new EventSource('/runs/progress-stream');
+  es.addEventListener('progress', function (e) {
+    var data = JSON.parse(e.data);
+    for (var id in data) {
+      var cell = document.getElementById('jobs-' + id);
+      if (!cell) continue;
+      var v = data[id];
+      var found = v.found;
+      var total = v.total;
+      if (found === null || found === undefined) { cell.textContent = '\u2014'; }
+      else { cell.textContent = (total !== null && total !== undefined) ? found + ' / ' + total : String(found); }
+    }
+  });
+  es.addEventListener('done', function () {
+    es.close();
+    location.reload();
+  });
+  es.onerror = function () { es.close(); };
+
+  // Tick running-row durations every second client-side.
+  setInterval(function () {
+    var cells = document.querySelectorAll('[data-started]');
+    var now = Date.now();
+    cells.forEach(function (el) {
+      var started = new Date(el.dataset.started).getTime();
+      el.textContent = Math.round((now - started) / 1000) + 's';
+    });
+  }, 1000);
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -1,12 +1,11 @@
 """Schedule service — cron ↔ UI conversion and run-now trigger."""
 from __future__ import annotations
 
-import threading
 from typing import Any
 
 import yaml
 
-from ...config import load_config
+from ...config import config_write_lock, load_config
 
 # Day names for display
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -49,24 +48,32 @@ def get_schedule(config_path: str) -> dict[str, Any]:
         "minute": ui["minute"],
         "days": ui["days"],
         "order": [s for s in (sched.order or enabled) if s in enabled],
-        "retry_delay_minutes": sched.retry_delay_minutes,
-        "max_retries": sched.max_retries,
         "all_sources": enabled,
+        "enabled": sched.enabled,
     }
 
 
+def toggle_schedule_enabled(config_path: str, enabled: bool) -> None:
+    with config_write_lock:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        raw.setdefault("scheduler", {})
+        raw["scheduler"]["enabled"] = enabled
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+
 def save_schedule(config_path: str, hour: int, minute: int, days: list[int],
-                  order: list[str], retry_delay: int, max_retries: int) -> None:
+                  order: list[str]) -> None:
     cron = ui_to_cron(hour, minute, days)
-    with open(config_path, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or {}
-    raw.setdefault("scheduler", {})
-    raw["scheduler"]["cron"] = cron
-    raw["scheduler"]["order"] = order
-    raw["scheduler"]["retry_delay_minutes"] = retry_delay
-    raw["scheduler"]["max_retries"] = max_retries
-    with open(config_path, "w", encoding="utf-8") as fh:
-        yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    with config_write_lock:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        raw.setdefault("scheduler", {})
+        raw["scheduler"]["cron"] = cron
+        raw["scheduler"]["order"] = order
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
 
 def get_scraper(config_path: str) -> dict[str, Any]:
@@ -89,15 +96,16 @@ def save_scraper(
     jitter_max: int,
     user_agent: str,
 ) -> None:
-    with open(config_path, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or {}
-    raw.setdefault("scraper", {})
-    raw["scraper"]["request_timeout_seconds"] = timeout
-    raw["scraper"]["retries"] = retries
-    raw["scraper"]["jitter_ms"] = [jitter_min, jitter_max]
-    raw["scraper"]["user_agent"] = user_agent
-    with open(config_path, "w", encoding="utf-8") as fh:
-        yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    with config_write_lock:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh) or {}
+        raw.setdefault("scraper", {})
+        raw["scraper"]["request_timeout_seconds"] = timeout
+        raw["scraper"]["retries"] = retries
+        raw["scraper"]["jitter_ms"] = [jitter_min, jitter_max]
+        raw["scraper"]["user_agent"] = user_agent
+        with open(config_path, "w", encoding="utf-8") as fh:
+            yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
 
 def get_last_runs(conn) -> dict[str, dict[str, Any]]:

@@ -12,9 +12,17 @@
 <article class="source-card">
   <header class="source-card__header">
     <span class="source-card__name">{{ display_name }}</span>
-    <form method="post" action="/sources/{{ name }}/run">
-      <button type="submit" class="secondary outline source-run-btn">▶ Run Now</button>
-    </form>
+    <div class="source-card__actions">
+      <form method="post" action="/sources/{{ name }}/fetch">
+        <button type="submit" class="secondary outline source-action-btn" title="Fetch new job cards only">Fetch</button>
+      </form>
+      <form method="post" action="/sources/{{ name }}/enrich">
+        <button type="submit" class="secondary outline source-action-btn" title="Enrich job detail for existing cards">Enrich</button>
+      </form>
+      <form method="post" action="/sources/{{ name }}/run">
+        <button type="submit" class="source-action-btn" title="Fetch + Enrich (full run)">▶ Run Now</button>
+      </form>
+    </div>
   </header>
 
   <form method="post" action="/sources/{{ name }}/save">
