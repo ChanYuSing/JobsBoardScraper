@@ -188,7 +188,7 @@
   {% if 'title' in active_cols %}
   <div id="fp-keyword" class="col-filter__popup" hidden>
     <p class="col-filter__popup-title">Keyword</p>
-    <input type="search" name="keyword" value="{{ f_keyword }}" placeholder="Search title, description…" autocomplete="off"/>
+    <input type="search" name="keyword" value="{{ f_keyword }}" placeholder="Search title…" autocomplete="off"/>
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_keyword %}<button type="button" class="col-filter__clear" data-clear="keyword">Clear</button>{% endif %}

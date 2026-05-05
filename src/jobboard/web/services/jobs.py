@@ -128,9 +128,8 @@ def list_jobs(
         where.append("date(j.first_seen_at) <= ?")
         params.append(first_seen_to)
     if keyword:
-        where.append("(LOWER(j.title) LIKE ? OR LOWER(j.company) LIKE ? OR LOWER(COALESCE(j.description_text,'')) LIKE ?)")
-        kw = f"%{keyword.lower()}%"
-        params.extend([kw, kw, kw])
+        where.append("LOWER(j.title) LIKE ?")
+        params.append(f"%{keyword.lower()}%")
     if triage == "saved":
         where.append("js.status = 'saved'")
     elif triage == "dismissed":
