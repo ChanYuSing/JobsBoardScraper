@@ -9,7 +9,8 @@
   {# ── cv ── #}
   <article>
     <header><strong>Your CV</strong></header>
-    <textarea name="cv" rows="8" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
+    <p class="source-hint">Paste your full CV or résumé. The AI reads this to assess how well each job matches your background and experience.</p>
+    <textarea name="cv" rows="20" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
   </article>
 
   {# ── scoring fields ── #}
@@ -55,7 +56,8 @@
   {# ── system prompt ── #}
   <article>
     <header><strong>System prompt</strong></header>
-    <textarea name="system_prompt" rows="4" placeholder="Optional instruction prepended to every request — e.g. 'You are a concise recruiter assistant…'">{{ ai.system_prompt }}</textarea>
+    <p class="source-hint">Instructions that guide the AI's scoring behaviour. Use this to express your job preferences — e.g. <em>"Strongly prefer quant research or systematic trading roles at hedge funds or prop trading firms. Penalise pure IT support or non-finance roles."</em></p>
+    <textarea name="system_prompt" rows="12" placeholder="Optional instruction prepended to every request — e.g. 'You are a concise recruiter assistant…'">{{ ai.system_prompt }}</textarea>
   </article>
 
   {# ── ai provider ── #}

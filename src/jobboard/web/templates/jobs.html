@@ -161,35 +161,17 @@
           </td>
         {% endfor %}
         <td class="action-cell action-cell--sticky">
-          <form method="post" action="/jobs/{{ job.source }}/{{ job.job_id }}/mark">
-            <input type="hidden" name="keyword"        value="{{ f_keyword }}"/>
-            <input type="hidden" name="filter_source"  value="{{ f_source }}"/>
-            <input type="hidden" name="date_from"      value="{{ f_date_from }}"/>
-            <input type="hidden" name="date_to"        value="{{ f_date_to }}"/>
-            {% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}
-            <input type="hidden" name="company"        value="{{ f_company }}"/>
-            <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
-            <input type="hidden" name="classification"      value="{{ f_classification }}"/>
-            <input type="hidden" name="subclassification_kw" value="{{ f_subclassification_kw }}"/>
-            <input type="hidden" name="first_seen_from"      value="{{ f_first_seen_from }}"/>
-            <input type="hidden" name="first_seen_to"        value="{{ f_first_seen_to }}"/>
-            <input type="hidden" name="triage"               value="{{ f_triage }}"/>
-            <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
-            <input type="hidden" name="sort_dir"       value="{{ f_sort_dir }}"/>
-            <input type="hidden" name="cols"           value="{{ cols_param }}"/>
-            <input type="hidden" name="page"           value="{{ page }}"/>
-            {% if page_size != 15 %}<input type="hidden" name="page_size" value="{{ page_size }}"/>{% endif %}
-            {% for name, val in score_filters.items() %}<input type="hidden" name="score_min_{{ name }}" value="{{ val }}"/>{% endfor %}
+          <div class="triage-cell" data-source="{{ job.source }}" data-job-id="{{ job.job_id }}">
             {% if job.triage_status == 'saved' %}
               <span class="triage-badge triage-badge--saved">★ Saved</span>
-              <button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Unsave">↩</button>
+              <button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Unsave">↩</button>
             {% elif job.triage_status == 'dismissed' %}
               <span class="triage-badge triage-badge--dismissed">✕ Dismissed</span>
-              <button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Reset">↩</button>
+              <button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Reset">↩</button>
             {% else %}
-              <button type="submit" name="status" value="saved" class="triage-btn triage-btn--save">Save</button>
+              <button type="button" class="triage-btn triage-btn--save" data-status="saved">Save</button>
             {% endif %}
-          </form>
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -199,34 +181,6 @@
 
   {% if not jobs %}
   <p class="no-results">No jobs match the current filters.</p>
-  {% endif %}
-
-  {% if total_pages > 1 or total > 10 %}
-  <div class="pagination">
-    {% if page > 1 %}<a href="/jobs?{{ page_qs }}&page={{ page - 1 }}" role="button" class="secondary outline">← Prev</a>{% endif %}
-    <span class="pagination__info">Page {{ page }} of {{ total_pages }}</span>
-    {% if page < total_pages %}<a href="/jobs?{{ page_qs }}&page={{ page + 1 }}" role="button" class="secondary outline">Next →</a>{% endif %}
-    <form method="get" action="/jobs" class="pagination__jump">
-      {% for k, v in request.query_params.multi_items() if k not in ('page',) %}
-        <input type="hidden" name="{{ k }}" value="{{ v }}"/>
-      {% endfor %}
-      <label class="pagination__jump-label">Go to
-        <input type="number" name="page" value="{{ page }}" min="1" max="{{ total_pages }}"
-               class="pagination__jump-input"/>
-      </label>
-      <button type="submit" class="secondary outline pagination__jump-btn">Go</button>
-    </form>
-    <form method="get" action="/jobs" class="pagination__perpage">
-      {% for k, v in request.query_params.multi_items() if k not in ('page', 'page_size') %}
-        <input type="hidden" name="{{ k }}" value="{{ v }}"/>
-      {% endfor %}
-      <label class="pagination__perpage-label">Per page
-        <input type="number" name="page_size" value="{{ page_size }}" min="1"
-               class="pagination__perpage-input"/>
-      </label>
-      <button type="submit" class="secondary outline pagination__jump-btn">Set</button>
-    </form>
-  </div>
   {% endif %}
 
   {# ═══════════════ FILTER POPUPS ═══════════════ #}
@@ -402,6 +356,34 @@
 
 </form>
 
+{% if total_pages > 1 or total > 10 %}
+<div class="pagination">
+  {% if page > 1 %}<a href="/jobs?{{ page_qs }}&page={{ page - 1 }}" role="button" class="secondary outline">← Prev</a>{% endif %}
+  <span class="pagination__info">Page {{ page }} of {{ total_pages }}</span>
+  {% if page < total_pages %}<a href="/jobs?{{ page_qs }}&page={{ page + 1 }}" role="button" class="secondary outline">Next →</a>{% endif %}
+  <form method="get" action="/jobs" class="pagination__jump">
+    {% for k, v in request.query_params.multi_items() if k not in ('page',) %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}"/>
+    {% endfor %}
+    <label class="pagination__jump-label">Go to
+      <input type="number" name="page" value="{{ page }}" min="1" max="{{ total_pages }}"
+             class="pagination__jump-input"/>
+    </label>
+    <button type="submit" class="secondary outline pagination__jump-btn">Go</button>
+  </form>
+  <form method="get" action="/jobs" class="pagination__perpage">
+    {% for k, v in request.query_params.multi_items() if k not in ('page', 'page_size') %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}"/>
+    {% endfor %}
+    <label class="pagination__perpage-label">Per page
+      <input type="number" name="page_size" value="{{ page_size }}" min="1"
+             class="pagination__perpage-input"/>
+    </label>
+    <button type="submit" class="secondary outline pagination__jump-btn">Set</button>
+  </form>
+</div>
+{% endif %}
+
 {# ── JOB SLIDE-IN PANEL ── #}
 <div class="jpanel-overlay" id="jpanel-overlay"></div>
 <div class="jpanel" id="jpanel" role="dialog" aria-modal="true" aria-label="Job detail">
@@ -496,6 +478,37 @@
   });
 
 
+  /* ── row triage buttons (mark-ajax) ── */
+  function wireRowTriage(container) {
+    container.querySelectorAll('.triage-btn[data-status]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var cell = btn.closest('.triage-cell');
+        var src  = cell.dataset.source;
+        var id   = cell.dataset.jobId;
+        fetch('/jobs/' + src + '/' + id + '/mark-ajax', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({status: btn.dataset.status})
+        }).then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html;
+            if (data.status === 'saved') {
+              html = '<span class="triage-badge triage-badge--saved">★ Saved</span>' +
+                     '<button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Unsave">↩</button>';
+            } else if (data.status === 'dismissed') {
+              html = '<span class="triage-badge triage-badge--dismissed">✕ Dismissed</span>' +
+                     '<button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Reset">↩</button>';
+            } else {
+              html = '<button type="button" class="triage-btn triage-btn--save" data-status="saved">Save</button>';
+            }
+            cell.innerHTML = html;
+            wireRowTriage(cell);
+          });
+      });
+    });
+  }
+  wireRowTriage(document);
+
   /* ── slide-in job panel ── */
   var overlay  = document.getElementById('jpanel-overlay');
   var panel    = document.getElementById('jpanel');
@@ -539,16 +552,20 @@
                   // update the sticky status cell in the table row
                   var tr = document.querySelector('[data-panel-src="'+src+'"][data-panel-id="'+id+'"]')?.closest('tr');
                   if (tr) {
-                    var rowForm = tr.querySelector('.action-cell--sticky form');
-                    if (rowForm) {
-                      rowForm.querySelectorAll('.triage-badge, .triage-btn').forEach(function(el) { el.remove(); });
+                    var rowCell = tr.querySelector('.triage-cell');
+                    if (rowCell) {
+                      var rhtml;
                       if (data.status === 'saved') {
-                        rowForm.insertAdjacentHTML('beforeend', '<span class="triage-badge triage-badge--saved">\u2605 Saved</span><button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Unsave">\u21a9</button>');
+                        rhtml = '<span class="triage-badge triage-badge--saved">\u2605 Saved</span>' +
+                                '<button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Unsave">\u21a9</button>';
                       } else if (data.status === 'dismissed') {
-                        rowForm.insertAdjacentHTML('beforeend', '<span class="triage-badge triage-badge--dismissed">\u2715 Dismissed</span><button type="submit" name="status" value="new" class="triage-btn triage-btn--reset" title="Reset">\u21a9</button>');
+                        rhtml = '<span class="triage-badge triage-badge--dismissed">\u2715 Dismissed</span>' +
+                                '<button type="button" class="triage-btn triage-btn--reset" data-status="new" title="Reset">\u21a9</button>';
                       } else {
-                        rowForm.insertAdjacentHTML('beforeend', '<button type="submit" name="status" value="saved" class="triage-btn triage-btn--save">Save</button>');
+                        rhtml = '<button type="button" class="triage-btn triage-btn--save" data-status="saved">Save</button>';
                       }
+                      rowCell.innerHTML = rhtml;
+                      wireRowTriage(rowCell);
                     }
                   }
                 });
