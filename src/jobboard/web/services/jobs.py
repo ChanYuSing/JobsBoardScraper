@@ -1,8 +1,8 @@
 """Jobs service — unified query across job_jobsdb + job_linkedin."""
 from __future__ import annotations
 
+import re
 import sqlite3
-from datetime import datetime, timezone
 from typing import Any
 
 # Ordered display columns (label → normalised name)
@@ -11,61 +11,32 @@ ALL_DISPLAY_COLS: list[tuple[str, str]] = [
     ("Company",         "company"),
     ("Location",        "location"),
     ("Work type",       "work_type"),
-    ("Arrangement",     "work_arrangement"),
-    ("Salary",          "salary"),
     ("Date posted",     "date_posted"),
     ("Source",          "source"),
     ("Classification",  "classification"),
     ("Subcat.",         "subclassification"),
-    ("Teaser",          "teaser"),
     ("URL",             "url"),
     ("First seen",      "first_seen_at"),
 ]
-DEFAULT_COLS = ["title", "company", "location", "work_type", "salary", "date_posted", "source"]
+DEFAULT_COLS = ["title", "company", "location", "work_type", "date_posted", "source"]
 
 
-def _union_sql() -> str:
-    return """
-    SELECT
-        job_id, title, company, location,
-        work_types      AS work_type,
-        work_arrangement,
-        salary_label    AS salary,
-        listing_date_utc AS date_posted,
-        classification,
-        subclassification,
-        teaser,
-        description_text,
-        description_html,
-        url,
-        first_seen_at,
-        detail_fetched_at,
-        'jobsdb'        AS source
-    FROM job_jobsdb
 
-    UNION ALL
+_filter_opts_cache: dict | None = None
 
-    SELECT
-        job_id, title, company, location,
-        employment_type AS work_type,
-        NULL            AS work_arrangement,
-        NULL            AS salary,
-        date_posted,
-        NULL            AS classification,
-        NULL            AS subclassification,
-        NULL            AS teaser,
-        description_text,
-        description_html,
-        url,
-        first_seen_at,
-        detail_fetched_at,
-        'linkedin_guest' AS source
-    FROM job_linkedin
-    """
+
+def invalidate_filter_options_cache() -> None:
+    """Clear the filter options cache. Call after any scrape that may add new values."""
+    global _filter_opts_cache
+    _filter_opts_cache = None
 
 
 def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
     """Return distinct non-null values for each filterable column, for dropdown population."""
+    global _filter_opts_cache
+    if _filter_opts_cache is not None:
+        return _filter_opts_cache
+
     def _distinct(sql: str) -> list[str]:
         rows = conn.execute(sql).fetchall()
         return sorted({r[0] for r in rows if r[0]})
@@ -77,7 +48,7 @@ def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
         for (raw,) in rows:
             if raw:
                 for part in str(raw).split(","):
-                    clean = part.strip()
+                    clean = re.sub(r'^and\s+', '', part.strip(), flags=re.IGNORECASE)
                     if clean:
                         # normalise: collapse hyphen/space variants case-insensitively
                         key = clean.lower().replace("-", " ").replace("  ", " ")
@@ -85,18 +56,18 @@ def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
                             seen[key] = clean  # keep first real capitalisation
         return sorted(seen.values(), key=str.casefold)
 
-    union = _union_sql()
-    return {
-        "source":         _distinct(f"SELECT DISTINCT source FROM ({union})"),
-        "work_type":      _split_distinct(f"SELECT DISTINCT work_type FROM ({union})"),
-        "arrangement":    _distinct(f"SELECT DISTINCT work_arrangement FROM ({union})"),
-        "classification": _distinct(f"SELECT DISTINCT classification FROM ({union})"),
+    result = {
+        "source":         _distinct("SELECT DISTINCT source FROM job_all"),
+        "work_type":      _split_distinct("SELECT DISTINCT work_type FROM job_all"),
+        "classification": _split_distinct("SELECT DISTINCT classification FROM job_all"),
     }
+    _filter_opts_cache = result
+    return result
 
 
 SORTABLE: set[str] = {
-    "title", "company", "location", "work_type", "salary",
-    "date_posted", "source", "classification", "first_seen_at",
+    "title", "company", "location", "work_type",
+    "date_posted", "source", "classification", "subclassification", "first_seen_at",
 }
 
 
@@ -108,10 +79,12 @@ def list_jobs(
     date_from: str = "",
     date_to: str = "",
     work_type: list[str] | None = None,
-    arrangement: str = "",
     company: str = "",
     location_kw: str = "",
     classification: str = "",
+    subclassification_kw: str = "",
+    first_seen_from: str = "",
+    first_seen_to: str = "",
     triage: str = "",        # "saved" | "dismissed" | "new" | ""
     sort_by: str = "",
     sort_dir: str = "desc",
@@ -136,9 +109,6 @@ def list_jobs(
         clauses = " OR ".join("LOWER(j.work_type) LIKE ?" for _ in work_type)
         where.append(f"({clauses})")
         params.extend(f"%{wt.lower()}%" for wt in work_type)
-    if arrangement:
-        where.append("LOWER(j.work_arrangement) LIKE ?")
-        params.append(f"%{arrangement.lower()}%")
     if company:
         where.append("LOWER(j.company) LIKE ?")
         params.append(f"%{company.lower()}%")
@@ -148,6 +118,15 @@ def list_jobs(
     if classification:
         where.append("LOWER(COALESCE(j.classification,'')) LIKE ?")
         params.append(f"%{classification.lower()}%")
+    if subclassification_kw:
+        where.append("LOWER(COALESCE(j.subclassification,'')) LIKE ?")
+        params.append(f"%{subclassification_kw.lower()}%")
+    if first_seen_from:
+        where.append("date(j.first_seen_at) >= ?")
+        params.append(first_seen_from)
+    if first_seen_to:
+        where.append("date(j.first_seen_at) <= ?")
+        params.append(first_seen_to)
     if keyword:
         where.append("(LOWER(j.title) LIKE ? OR LOWER(j.company) LIKE ? OR LOWER(COALESCE(j.description_text,'')) LIKE ?)")
         kw = f"%{keyword.lower()}%"
@@ -173,7 +152,7 @@ def list_jobs(
     sort_by_score = bool(sort_by and score_field_names and sort_by in score_field_names)
 
     count_base = f"""
-        FROM ({_union_sql()}) j
+        FROM job_all j
         LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
         {clause}
     """
@@ -182,7 +161,7 @@ def list_jobs(
     offset = (page - 1) * page_size
     if sort_by_score:
         data_base = f"""
-            FROM ({_union_sql()}) j
+            FROM job_all j
             LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
             LEFT JOIN (
                 SELECT ja.source, ja.job_id, ja.value_int AS _score_sort
@@ -220,7 +199,7 @@ def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any
     row = conn.execute(
         f"""
         SELECT j.*, COALESCE(js.status, 'new') AS triage_status
-        FROM ({_union_sql()}) j
+        FROM job_all j
         LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
         WHERE j.source = ? AND j.job_id = ?
         """,

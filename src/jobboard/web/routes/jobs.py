@@ -42,10 +42,12 @@ def jobs_page(
     date_from: str = "",
     date_to: str = "",
     work_type: list[str] = Query(default=[]),
-    arrangement: str = "",
     company: str = "",
     location_kw: str = "",
     classification: str = "",
+    subclassification_kw: str = "",
+    first_seen_from: str = "",
+    first_seen_to: str = "",
     triage: str = "",
     sort_by: str = "",
     sort_dir: str = "desc",
@@ -82,9 +84,13 @@ def jobs_page(
         conn,
         keyword=keyword, source=source,
         date_from=date_from, date_to=date_to,
-        work_type=work_type, arrangement=arrangement,
+        work_type=work_type,
         company=company, location_kw=location_kw,
-        classification=classification, triage=triage,
+        classification=classification,
+        subclassification_kw=subclassification_kw,
+        first_seen_from=first_seen_from,
+        first_seen_to=first_seen_to,
+        triage=triage,
         sort_by=sort_by, sort_dir=sort_dir,
         page=page, page_size=page_size,
         score_field_names=score_int_keys,
@@ -97,13 +103,22 @@ def jobs_page(
     # build base filter params dict (without page) for pagination links
     scalar_fp = dict(
         keyword=keyword, source=source, date_from=date_from, date_to=date_to,
-        arrangement=arrangement, company=company,
-        location_kw=location_kw, classification=classification, triage=triage,
+        company=company,
+        location_kw=location_kw, classification=classification,
+        subclassification_kw=subclassification_kw,
+        first_seen_from=first_seen_from,
+        first_seen_to=first_seen_to,
+        triage=triage,
         sort_by=sort_by, sort_dir=sort_dir,
         cols=cols_param, page_size=str(page_size) if page_size != 15 else "",
     )
     active_filter_count = (
-        sum(1 for k, v in scalar_fp.items() if v and k not in ("cols", "triage", "sort_by", "sort_dir", "page_size"))
+        sum(1 for k, v in scalar_fp.items() if v and k not in (
+            "cols", "triage", "sort_by", "sort_dir", "page_size",
+            "date_from", "date_to", "first_seen_from", "first_seen_to",
+        ))
+        + (1 if (date_from or date_to) else 0)
+        + (1 if (first_seen_from or first_seen_to) else 0)
         + (1 if work_type else 0)
         + len(score_filters)
     )
@@ -124,7 +139,7 @@ def jobs_page(
             "page": page,
             "total_pages": total_pages,
             "page_size": page_size,
-            "all_cols": extended_display_cols,
+            "extended_display_cols": extended_display_cols,
             "active_cols": active_cols,
             "ordered_cols": ordered_cols,
             "picker_cols": picker_cols,
@@ -140,10 +155,12 @@ def jobs_page(
             "f_date_from": date_from,
             "f_date_to": date_to,
             "f_work_type": work_type,        # list[str]
-            "f_arrangement": arrangement,
             "f_company": company,
             "f_location_kw": location_kw,
             "f_classification": classification,
+            "f_subclassification_kw": subclassification_kw,
+            "f_first_seen_from": first_seen_from,
+            "f_first_seen_to": first_seen_to,
             "f_triage": triage,
             "f_sort_by": sort_by,
             "f_sort_dir": sort_dir,
@@ -214,22 +231,24 @@ async def mark(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     form_data = await request.form()
-    status         = str(form_data.get("status", "new"))
-    keyword        = str(form_data.get("keyword", ""))
-    filter_source  = str(form_data.get("filter_source", ""))
-    date_from      = str(form_data.get("date_from", ""))
-    date_to        = str(form_data.get("date_to", ""))
-    work_type      = list(form_data.getlist("work_type"))
-    arrangement    = str(form_data.get("arrangement", ""))
-    company        = str(form_data.get("company", ""))
-    location_kw    = str(form_data.get("location_kw", ""))
-    classification = str(form_data.get("classification", ""))
-    triage         = str(form_data.get("triage", ""))
-    sort_by        = str(form_data.get("sort_by", ""))
-    sort_dir       = str(form_data.get("sort_dir", "desc"))
-    cols           = str(form_data.get("cols", ""))
-    page_s         = str(form_data.get("page", "1"))
-    page_size_s    = str(form_data.get("page_size", "15"))
+    status               = str(form_data.get("status", "new"))
+    keyword              = str(form_data.get("keyword", ""))
+    filter_source        = str(form_data.get("filter_source", ""))
+    date_from            = str(form_data.get("date_from", ""))
+    date_to              = str(form_data.get("date_to", ""))
+    work_type            = list(form_data.getlist("work_type"))
+    company              = str(form_data.get("company", ""))
+    location_kw          = str(form_data.get("location_kw", ""))
+    classification       = str(form_data.get("classification", ""))
+    subclassification_kw = str(form_data.get("subclassification_kw", ""))
+    first_seen_from      = str(form_data.get("first_seen_from", ""))
+    first_seen_to        = str(form_data.get("first_seen_to", ""))
+    triage               = str(form_data.get("triage", ""))
+    sort_by              = str(form_data.get("sort_by", ""))
+    sort_dir             = str(form_data.get("sort_dir", "desc"))
+    cols                 = str(form_data.get("cols", ""))
+    page_s               = str(form_data.get("page", "1"))
+    page_size_s          = str(form_data.get("page_size", "15"))
     try:
         mark_job(conn, source, job_id, status)
     except ValueError as exc:
@@ -239,8 +258,11 @@ async def mark(
     scalar: dict[str, object] = {k: v for k, v in {
         "keyword": keyword, "source": filter_source,
         "date_from": date_from, "date_to": date_to,
-        "arrangement": arrangement, "company": company,
+        "company": company,
         "location_kw": location_kw, "classification": classification,
+        "subclassification_kw": subclassification_kw,
+        "first_seen_from": first_seen_from,
+        "first_seen_to": first_seen_to,
         "triage": triage, "sort_by": sort_by, "sort_dir": sort_dir,
         "cols": cols, "page": page_s,
         "page_size": page_size_s if page_size_s != "15" else "",

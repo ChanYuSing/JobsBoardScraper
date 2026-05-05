@@ -5,25 +5,27 @@
 {% set src_label = {'jobsdb': 'JobsDB', 'linkedin_guest': 'LinkedIn Guest'} %}
 {# maps column key → popup id for filterable columns #}
 {% set popup_for = {
-  'title':            'fp-keyword',
-  'company':          'fp-company',
-  'location':         'fp-location',
-  'work_type':        'fp-work_type',
-  'work_arrangement': 'fp-arrangement',
-  'date_posted':      'fp-date_posted',
-  'source':           'fp-source',
-  'classification':   'fp-classification'
+  'title':           'fp-keyword',
+  'company':         'fp-company',
+  'location':        'fp-location',
+  'work_type':       'fp-work_type',
+  'date_posted':     'fp-date_posted',
+  'source':          'fp-source',
+  'classification':  'fp-classification',
+  'subclassification': 'fp-subclassification',
+  'first_seen_at':   'fp-first_seen'
 } %}
 {# active filter per column key — truthy = filter set #}
 {% set filter_active = {
-  'title':            f_keyword,
-  'company':          f_company,
-  'location':         f_location_kw,
-  'work_type':        f_work_type,
-  'work_arrangement': f_arrangement,
-  'date_posted':      (f_date_from or f_date_to),
-  'source':           f_source,
-  'classification':   f_classification
+  'title':           f_keyword,
+  'company':         f_company,
+  'location':        f_location_kw,
+  'work_type':       f_work_type,
+  'date_posted':     (f_date_from or f_date_to),
+  'source':          f_source,
+  'classification':  f_classification,
+  'subclassification': f_subclassification_kw,
+  'first_seen_at':   (f_first_seen_from or f_first_seen_to)
 } %}
 
 {# ══ COLUMN PICKER ══ #}
@@ -33,9 +35,11 @@
   <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
   <input type="hidden" name="source"         value="{{ f_source }}"/>
   {% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}
-  <input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>
-  <input type="hidden" name="classification" value="{{ f_classification }}"/>
-  <input type="hidden" name="date_from"      value="{{ f_date_from }}"/>
+  <input type="hidden" name="classification"      value="{{ f_classification }}"/>
+  <input type="hidden" name="subclassification_kw" value="{{ f_subclassification_kw }}"/>
+  <input type="hidden" name="first_seen_from"      value="{{ f_first_seen_from }}"/>
+  <input type="hidden" name="first_seen_to"        value="{{ f_first_seen_to }}"/>
+  <input type="hidden" name="date_from"            value="{{ f_date_from }}"/>
   <input type="hidden" name="date_to"        value="{{ f_date_to }}"/>
   <input type="hidden" name="triage"         value="{{ f_triage }}"/>
   <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
@@ -79,9 +83,13 @@
   {% if 'company'          not in active_cols %}<input type="hidden" name="company"        value="{{ f_company }}"/>{% endif %}
   {% if 'location'         not in active_cols %}<input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>{% endif %}
   {% if 'work_type'        not in active_cols %}{% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}{% endif %}
-  {% if 'work_arrangement' not in active_cols %}<input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>{% endif %}
   {% if 'source'           not in active_cols %}<input type="hidden" name="source"         value="{{ f_source }}"/>{% endif %}
   {% if 'classification'   not in active_cols %}<input type="hidden" name="classification" value="{{ f_classification }}"/>{% endif %}
+  {% if 'subclassification' not in active_cols %}<input type="hidden" name="subclassification_kw" value="{{ f_subclassification_kw }}"/>{% endif %}
+  {% if 'first_seen_at'    not in active_cols %}
+    <input type="hidden" name="first_seen_from" value="{{ f_first_seen_from }}"/>
+    <input type="hidden" name="first_seen_to"   value="{{ f_first_seen_to }}"/>
+  {% endif %}
   {% if 'date_posted'      not in active_cols %}
     <input type="hidden" name="date_from" value="{{ f_date_from }}"/>
     <input type="hidden" name="date_to"   value="{{ f_date_to }}"/>
@@ -100,8 +108,8 @@
             {# Label: filter trigger if filterable, sort trigger if sortable-only, plain span otherwise #}
             {% if key in popup_for %}
               <button type="button"
-                      class="th-filter-btn{% if filter_active[key] %} th-filter-btn--active{% endif %}"
-                      data-popup="{{ popup_for[key] }}">{{ label }}</button>
+                      class="th-filter-btn{% if filter_active[key] or f_sort_by == key %} th-filter-btn--active{% endif %}"
+                      data-popup="{{ popup_for[key] }}">{{ label }}{% if f_sort_by == key %} {{ '↑' if f_sort_dir == 'asc' else '↓' }}{% endif %}</button>
             {% elif key in score_int_keys %}
               <button type="button"
                       class="th-filter-btn{% if score_filters.get(key) is not none or f_sort_by == key %} th-filter-btn--active{% endif %}"
@@ -142,8 +150,6 @@
               {{ job[key][:10] if job[key] else "—" }}
             {% elif key == "url" %}
               {% if job[key] %}<a href="{{ job[key] }}" target="_blank" rel="noopener noreferrer">↗</a>{% else %}—{% endif %}
-            {% elif key == "teaser" %}
-              <span class="cell-truncate" title="{{ job[key] or '' }}">{{ job[key] or "—" }}</span>
             {% elif key in score_int_keys %}
               {% set sv = job.get(key) %}
               {% if sv is not none %}<span class="score-badge score-badge--{{ sv }}">{{ sv }}</span>{% else %}—{% endif %}
@@ -161,11 +167,13 @@
             <input type="hidden" name="date_from"      value="{{ f_date_from }}"/>
             <input type="hidden" name="date_to"        value="{{ f_date_to }}"/>
             {% for wt in f_work_type %}<input type="hidden" name="work_type" value="{{ wt }}"/>{% endfor %}
-            <input type="hidden" name="arrangement"    value="{{ f_arrangement }}"/>
             <input type="hidden" name="company"        value="{{ f_company }}"/>
             <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
-            <input type="hidden" name="classification" value="{{ f_classification }}"/>
-            <input type="hidden" name="triage"         value="{{ f_triage }}"/>
+            <input type="hidden" name="classification"      value="{{ f_classification }}"/>
+            <input type="hidden" name="subclassification_kw" value="{{ f_subclassification_kw }}"/>
+            <input type="hidden" name="first_seen_from"      value="{{ f_first_seen_from }}"/>
+            <input type="hidden" name="first_seen_to"        value="{{ f_first_seen_to }}"/>
+            <input type="hidden" name="triage"               value="{{ f_triage }}"/>
             <input type="hidden" name="sort_by"        value="{{ f_sort_by }}"/>
             <input type="hidden" name="sort_dir"       value="{{ f_sort_dir }}"/>
             <input type="hidden" name="cols"           value="{{ cols_param }}"/>
@@ -230,6 +238,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_keyword %}<button type="button" class="col-filter__clear" data-clear="keyword">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="title" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="title" data-sort-dir="desc">↓ Z→A</button>
     </div>
   </div>
   {% endif %}
@@ -241,6 +251,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_company %}<button type="button" class="col-filter__clear" data-clear="company">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="company" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="company" data-sort-dir="desc">↓ Z→A</button>
     </div>
   </div>
   {% endif %}
@@ -252,6 +264,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_location_kw %}<button type="button" class="col-filter__clear" data-clear="location_kw">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="location" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="location" data-sort-dir="desc">↓ Z→A</button>
     </div>
   </div>
   {% endif %}
@@ -270,22 +284,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_work_type %}<button type="button" class="col-filter__clear" data-clear="work_type_multi">Clear</button>{% endif %}
-    </div>
-  </div>
-  {% endif %}
-
-  {% if 'work_arrangement' in active_cols %}
-  <div id="fp-arrangement" class="col-filter__popup" hidden>
-    <p class="col-filter__popup-title">Arrangement</p>
-    <select name="arrangement">
-      <option value="">All</option>
-      {% for a in filter_options.arrangement %}
-        <option value="{{ a }}" {% if f_arrangement == a %}selected{% endif %}>{{ a }}</option>
-      {% endfor %}
-    </select>
-    <div class="col-filter__actions">
-      <button type="submit" class="col-filter__apply">Apply</button>
-      {% if f_arrangement %}<button type="button" class="col-filter__clear" data-clear="arrangement">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="work_type" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="work_type" data-sort-dir="desc">↓ Z→A</button>
     </div>
   </div>
   {% endif %}
@@ -300,6 +300,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_date_from or f_date_to %}<button type="button" class="col-filter__clear" data-clear="date_range">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="date_posted" data-sort-dir="desc">↓ Newest first</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="date_posted" data-sort-dir="asc">↑ Oldest first</button>
     </div>
   </div>
   {% endif %}
@@ -316,6 +318,8 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_source %}<button type="button" class="col-filter__clear" data-clear="source">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="source" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="source" data-sort-dir="desc">↓ Z→A</button>
     </div>
   </div>
   {% endif %}
@@ -332,6 +336,37 @@
     <div class="col-filter__actions">
       <button type="submit" class="col-filter__apply">Apply</button>
       {% if f_classification %}<button type="button" class="col-filter__clear" data-clear="classification">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="classification" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="classification" data-sort-dir="desc">↓ Z→A</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'subclassification' in active_cols %}
+  <div id="fp-subclassification" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">Subcategory</p>
+    <input type="search" name="subclassification_kw" value="{{ f_subclassification_kw }}" placeholder="Partial match…" autocomplete="off"/>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_subclassification_kw %}<button type="button" class="col-filter__clear" data-clear="subclassification_kw">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="subclassification" data-sort-dir="asc">↑ A→Z</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="subclassification" data-sort-dir="desc">↓ Z→A</button>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if 'first_seen_at' in active_cols %}
+  <div id="fp-first_seen" class="col-filter__popup" hidden>
+    <p class="col-filter__popup-title">First seen</p>
+    <div class="col-filter__date-row">
+      <label>From<input type="date" name="first_seen_from" value="{{ f_first_seen_from }}"/></label>
+      <label>To<input type="date" name="first_seen_to" value="{{ f_first_seen_to }}"/></label>
+    </div>
+    <div class="col-filter__actions">
+      <button type="submit" class="col-filter__apply">Apply</button>
+      {% if f_first_seen_from or f_first_seen_to %}<button type="button" class="col-filter__clear" data-clear="first_seen_range">Clear</button>{% endif %}
+      <button type="button" class="col-filter__sort-btn" data-sort-col="first_seen_at" data-sort-dir="desc">↓ Newest first</button>
+      <button type="button" class="col-filter__sort-btn" data-sort-col="first_seen_at" data-sort-dir="asc">↑ Oldest first</button>
     </div>
   </div>
   {% endif %}
@@ -434,6 +469,11 @@
         form.querySelectorAll('[name="work_type"]').forEach(function(el) { el.checked = false; });
       } else if (name === 'date_range') {
         ['date_from','date_to'].forEach(function(n) {
+          var el = form.querySelector('[name="' + n + '"]');
+          if (el) el.value = '';
+        });
+      } else if (name === 'first_seen_range') {
+        ['first_seen_from','first_seen_to'].forEach(function(n) {
           var el = form.querySelector('[name="' + n + '"]');
           if (el) el.value = '';
         });

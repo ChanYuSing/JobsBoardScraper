@@ -46,3 +46,37 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     PRIMARY KEY (source, job_id, field_id)
 );
 CREATE INDEX IF NOT EXISTS idx_job_analysis_src_job ON job_analysis (source, job_id);
+
+-- Denormalised flat table for fast job list queries.
+-- Kept in sync with job_jobsdb and job_linkedin via triggers defined in each
+-- source schema.  PK matches the source tables' (source, job_id) pair.
+CREATE TABLE IF NOT EXISTS job_all (
+    source            TEXT NOT NULL,
+    job_id            TEXT NOT NULL,
+    title             TEXT,
+    company           TEXT,
+    location          TEXT,
+    work_type         TEXT,
+    work_arrangement  TEXT,
+    salary            TEXT,
+    date_posted       TEXT,
+    classification    TEXT,
+    subclassification TEXT,
+    teaser            TEXT,
+    description_text  TEXT,
+    description_html  TEXT,
+    url               TEXT,
+    first_seen_at     TEXT,
+    detail_fetched_at TEXT,
+    PRIMARY KEY (source, job_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_all_date_posted      ON job_all(date_posted);
+CREATE INDEX IF NOT EXISTS idx_job_all_first_seen       ON job_all(first_seen_at);
+CREATE INDEX IF NOT EXISTS idx_job_all_source           ON job_all(source);
+CREATE INDEX IF NOT EXISTS idx_job_all_title            ON job_all(title);
+CREATE INDEX IF NOT EXISTS idx_job_all_company          ON job_all(company);
+CREATE INDEX IF NOT EXISTS idx_job_all_location         ON job_all(location);
+CREATE INDEX IF NOT EXISTS idx_job_all_work_type        ON job_all(work_type);
+CREATE INDEX IF NOT EXISTS idx_job_all_classification   ON job_all(classification);
+CREATE INDEX IF NOT EXISTS idx_job_all_subclassification ON job_all(subclassification);

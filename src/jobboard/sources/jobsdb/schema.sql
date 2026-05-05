@@ -41,3 +41,36 @@ CREATE TABLE IF NOT EXISTS job_jobsdb (
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_first_seen     ON job_jobsdb(first_seen_at);
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_detail_fetched ON job_jobsdb(detail_fetched_at);
 CREATE INDEX IF NOT EXISTS idx_job_jobsdb_listing_date   ON job_jobsdb(listing_date_utc);
+
+-- Sync triggers: keep job_all in sync with job_jobsdb.
+-- INSERT OR REPLACE fires DELETE then INSERT, so both DELETE and INSERT
+-- triggers are required to correctly handle upserts.
+CREATE TRIGGER IF NOT EXISTS trg_jobsdb_ins AFTER INSERT ON job_jobsdb BEGIN
+    INSERT OR REPLACE INTO job_all
+        (source, job_id, title, company, location, work_type, work_arrangement,
+         salary, date_posted, classification, subclassification, teaser,
+         description_text, description_html, url, first_seen_at, detail_fetched_at)
+    VALUES
+        ('jobsdb', NEW.job_id, NEW.title, NEW.company, NEW.location,
+         NEW.work_types, NEW.work_arrangement, NEW.salary_label, NEW.listing_date_utc,
+         NEW.classification, NEW.subclassification, NEW.teaser,
+         NEW.description_text, NEW.description_html, NEW.url,
+         NEW.first_seen_at, NEW.detail_fetched_at);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_jobsdb_upd AFTER UPDATE ON job_jobsdb BEGIN
+    INSERT OR REPLACE INTO job_all
+        (source, job_id, title, company, location, work_type, work_arrangement,
+         salary, date_posted, classification, subclassification, teaser,
+         description_text, description_html, url, first_seen_at, detail_fetched_at)
+    VALUES
+        ('jobsdb', NEW.job_id, NEW.title, NEW.company, NEW.location,
+         NEW.work_types, NEW.work_arrangement, NEW.salary_label, NEW.listing_date_utc,
+         NEW.classification, NEW.subclassification, NEW.teaser,
+         NEW.description_text, NEW.description_html, NEW.url,
+         NEW.first_seen_at, NEW.detail_fetched_at);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_jobsdb_del AFTER DELETE ON job_jobsdb BEGIN
+    DELETE FROM job_all WHERE source = 'jobsdb' AND job_id = OLD.job_id;
+END;

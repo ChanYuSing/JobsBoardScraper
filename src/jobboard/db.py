@@ -24,6 +24,9 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(p, check_same_thread=False, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA temp_store=MEMORY;")
+    conn.execute("PRAGMA cache_size=-65536;")  # 64 MB page cache
     conn.execute("PRAGMA busy_timeout=5000;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
@@ -44,6 +47,34 @@ def init_schema(conn: sqlite3.Connection) -> None:
     li_db.init_schema(conn)
     from .sources.jobsdb import db as jdb_db
     jdb_db.init_schema(conn)
+    conn.commit()
+    _populate_job_all(conn)
+
+
+def _populate_job_all(conn: sqlite3.Connection) -> None:
+    """Backfill job_all from source tables if empty (first run or after reset)."""
+    count = conn.execute("SELECT COUNT(*) FROM job_all").fetchone()[0]
+    if count > 0:
+        return
+    conn.execute("""
+        INSERT INTO job_all
+            (source, job_id, title, company, location, work_type, work_arrangement,
+             salary, date_posted, classification, subclassification, teaser,
+             description_text, description_html, url, first_seen_at, detail_fetched_at)
+        SELECT
+            'jobsdb', job_id, title, company, location,
+            work_types, work_arrangement, salary_label, listing_date_utc,
+            classification, subclassification, teaser,
+            description_text, description_html, url, first_seen_at, detail_fetched_at
+        FROM job_jobsdb
+        UNION ALL
+        SELECT
+            'linkedin_guest', job_id, title, company, location,
+            employment_type, NULL, NULL, date_posted,
+            industries, job_function, NULL,
+            description_text, description_html, url, first_seen_at, detail_fetched_at
+        FROM job_linkedin
+    """)
     conn.commit()
 
 

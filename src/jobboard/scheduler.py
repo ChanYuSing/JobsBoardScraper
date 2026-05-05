@@ -215,6 +215,8 @@ def _run_all(
                     return
                 log_run_finish(conn, run_id, status="ok", jobs_found=inserted + updated)
                 log.info("[%s] fetch ok  inserted=%d  updated=%d", source, inserted, updated)
+                from .web.services.jobs import invalidate_filter_options_cache
+                invalidate_filter_options_cache()
 
             except Exception as exc:
                 log_run_finish(conn, run_id, status="error", error=f"{type(exc).__name__}: {exc}")

@@ -26,7 +26,6 @@
         ("Location",       job.location),
         ("Salary",         job.salary),
         ("Work type",      job.work_type),
-        ("Arrangement",    job.work_arrangement),
         ("Classification", job.classification),
         ("Subcat.",        job.subclassification),
         ("Date posted",    job.date_posted[:10] if job.date_posted else None),
@@ -76,8 +75,6 @@
       <div class="jpanel__desc-html">{{ job.description_html | safe }}</div>
     {% elif job.description_text %}
       <pre class="jpanel__desc-pre">{{ job.description_text }}</pre>
-    {% elif job.teaser %}
-      <p>{{ job.teaser }}</p>
     {% else %}
       <p class="jpanel__empty">No description available yet.</p>
     {% endif %}
