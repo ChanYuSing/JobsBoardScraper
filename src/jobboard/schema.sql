@@ -45,3 +45,4 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     analysed_at TEXT NOT NULL,
     PRIMARY KEY (source, job_id, field_id)
 );
+CREATE INDEX IF NOT EXISTS idx_job_analysis_src_job ON job_analysis (source, job_id);

@@ -9,6 +9,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 import yaml
 
 from ...config import AiCfg, FieldCfg, config_write_lock, load_config
@@ -297,13 +298,15 @@ def score_all_jobs(
         scored_keys = _already_scored_keys(conn, field_names)
         jobs = [j for j in jobs if (j["source"], j["job_id"]) not in scored_keys]
 
+    _MAX_CONSECUTIVE_HTTP_ERRORS = 10
+
     total   = len(jobs)
     scored  = 0
     errors  = 0
+    consecutive_http_errors = 0
 
-    system = cfg.system_prompt
-    cv     = cfg.cv
-
+    system  = cfg.system_prompt
+    cv      = cfg.cv
     allowed = cfg.prompt_fields or DEFAULT_PROMPT_FIELDS
 
     for i, job in enumerate(jobs):
@@ -318,6 +321,23 @@ def score_all_jobs(
             result = score_job(cfg, system, user_msg)
             save_job_analysis(conn, job["source"], job["job_id"], result)
             scored += 1
+            consecutive_http_errors = 0
+        except httpx.HTTPStatusError as exc:
+            errors += 1
+            consecutive_http_errors += 1
+            log.warning(
+                "Score failed [%s/%s]: HTTP %d (%d/%d consecutive)",
+                job["source"], job["job_id"], exc.response.status_code,
+                consecutive_http_errors, _MAX_CONSECUTIVE_HTTP_ERRORS,
+            )
+            if consecutive_http_errors >= _MAX_CONSECUTIVE_HTTP_ERRORS:
+                log.error("Aborting batch after %d consecutive HTTP errors.", consecutive_http_errors)
+                if progress_cb is not None:
+                    try:
+                        progress_cb(i + 1, total, errors)
+                    except Exception:
+                        pass
+                raise
         except Exception as exc:
             log.warning("Score failed [%s/%s]: %s", job["source"], job["job_id"], exc)
             errors += 1
@@ -338,26 +358,24 @@ def score_all_jobs(
 def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
     """Return total non-dismissed jobs and how many haven't been scored yet."""
     total = 0
-    new = 0
+    scored = 0
     for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
-        row = conn.execute(
-            f"""
-            SELECT
-                COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE ja.job_id IS NULL) AS new_count
-            FROM {table} j
-            LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id
-            LEFT JOIN (
-                SELECT DISTINCT source, job_id FROM job_analysis
-            ) ja ON ja.source = ? AND ja.job_id = j.job_id
-            WHERE COALESCE(s.status, 'new') != 'dismissed'
-            """,
+        t = conn.execute(
+            f"SELECT COUNT(*) FROM {table} j"
+            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
+            " WHERE COALESCE(s.status, 'new') != 'dismissed'",
+            (source,),
+        ).fetchone()[0]
+        s = conn.execute(
+            "SELECT COUNT(DISTINCT ja.job_id)"
+            f" FROM job_analysis ja JOIN {table} j ON j.job_id = ja.job_id"
+            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = ja.job_id"
+            " WHERE ja.source = ? AND COALESCE(s.status, 'new') != 'dismissed'",
             (source, source),
-        ).fetchone()
-        if row:
-            total += row["total"]
-            new   += row["new_count"]
-    return {"total": total, "new": new}
+        ).fetchone()[0]
+        total  += t
+        scored += s
+    return {"total": total, "new": total - scored}
 
 
 def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[str, Any]]:
