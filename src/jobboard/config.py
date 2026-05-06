@@ -103,6 +103,7 @@ class AiCfg(BaseModel):
     system_prompt: str = ""
     cv: str = ""
     auto_score: bool = False
+    auto_score_preset_names: list[str] = Field(default_factory=list)
     fields: list[FieldCfg] = Field(default_factory=list)
     prompt_fields: list[str] = Field(default_factory=lambda: [
         "title", "company", "location", "description_text", "bullet_points",
