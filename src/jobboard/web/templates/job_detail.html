@@ -22,20 +22,20 @@
   <aside>
     <h6>Details</h6>
     <dl class="jd-dl">
-      {% for label, value in [
-        ("Company",          job.company),
-        ("Location",         job.location),
-        ("Salary",           job.salary),
-        ("Work type",        job.work_type),
-        ("Classification",   job.classification),
-        ("Sub-classification", job.subclassification),
-        ("Date posted",      job.date_posted[:10] if job.date_posted else None),
-        ("First seen",       job.first_seen_at[:10] if job.first_seen_at else None),
-        ("Detail fetched",   job.detail_fetched_at[:10] if job.detail_fetched_at else None),
+      {% for label, value, raw_utc in [
+        ("Company",          job.company,         None),
+        ("Location",         job.location,        None),
+        ("Salary",           job.salary,          None),
+        ("Work type",        job.work_type,       None),
+        ("Classification",   job.classification,  None),
+        ("Sub-classification", job.subclassification, None),
+        ("Date posted",      job.date_posted[:10] if job.date_posted else None,           None),
+        ("First seen",       job.first_seen_at[:10] if job.first_seen_at else None,       job.first_seen_at),
+        ("Detail fetched",   job.detail_fetched_at[:10] if job.detail_fetched_at else None, job.detail_fetched_at),
       ] %}
         {% if value %}
           <dt>{{ label }}</dt>
-          <dd>{{ value }}</dd>
+          <dd>{% if raw_utc %}<time data-utc="{{ raw_utc }}">{{ value }}</time>{% else %}{{ value }}{% endif %}</dd>
         {% endif %}
       {% endfor %}
     </dl>

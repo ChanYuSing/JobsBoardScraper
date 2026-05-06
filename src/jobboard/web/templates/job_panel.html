@@ -22,18 +22,18 @@
   {# ── left: metadata + triage ── #}
   <aside class="jpanel__meta">
     <dl class="jpanel__dl">
-      {% for label, value in [
+      {% for label, value, raw_utc in [
         ("Location",       job.location),
         ("Salary",         job.salary),
         ("Work type",      job.work_type),
         ("Classification", job.classification),
         ("Subcat.",        job.subclassification),
-        ("Date posted",    job.date_posted[:10] if job.date_posted else None),
-        ("First seen",     job.first_seen_at[:10] if job.first_seen_at else None),
+        ("Date posted",    job.date_posted[:10] if job.date_posted else None,     None),
+        ("First seen",     job.first_seen_at[:10] if job.first_seen_at else None, job.first_seen_at),
       ] %}
         {% if value %}
           <dt>{{ label }}</dt>
-          <dd>{{ value }}</dd>
+          <dd>{% if raw_utc %}<time data-utc="{{ raw_utc }}">{{ value }}</time>{% else %}{{ value }}{% endif %}</dd>
         {% endif %}
       {% endfor %}
     </dl>

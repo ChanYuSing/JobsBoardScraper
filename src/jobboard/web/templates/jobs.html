@@ -146,8 +146,10 @@
                  data-panel-id="{{ job.job_id }}">{{ job[key] or "—" }}</a>
             {% elif key == "source" %}
               {{ src_label.get(job[key], job[key]) or "—" }}
-            {% elif key in ("date_posted", "first_seen_at") %}
+            {% elif key == "date_posted" %}
               {{ job[key][:10] if job[key] else "—" }}
+            {% elif key == "first_seen_at" %}
+              {% if job[key] %}<time data-utc="{{ job[key] }}">{{ job[key][:10] }}</time>{% else %}—{% endif %}
             {% elif key == "url" %}
               {% if job[key] %}<a href="{{ job[key] }}" target="_blank" rel="noopener noreferrer">↗</a>{% else %}—{% endif %}
             {% elif key in score_int_keys %}
@@ -531,6 +533,7 @@
       .then(function(r) { return r.text(); })
       .then(function(html) {
         panel.innerHTML = html;
+        convertUtcTimestamps(panel);
         // wire close button
         var cb = panel.querySelector('#jpanel-close');
         if (cb) cb.addEventListener('click', closePanel);
@@ -627,6 +630,8 @@
     });
     chipRow.addEventListener('drop', function(e) { e.preventDefault(); });
   })();
+
+})();
 
 })();
 </script>

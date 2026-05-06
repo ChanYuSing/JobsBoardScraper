@@ -266,5 +266,24 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    function convertUtcTimestamps(root) {
+      (root || document).querySelectorAll('time[data-utc]').forEach(function(el) {
+        var d = new Date(el.dataset.utc);
+        if (isNaN(d)) return;
+        var y = d.getFullYear();
+        var mo = String(d.getMonth()+1).padStart(2,'0');
+        var day = String(d.getDate()).padStart(2,'0');
+        if (el.dataset.fmt === 'datetime') {
+          var h = String(d.getHours()).padStart(2,'0');
+          var m = String(d.getMinutes()).padStart(2,'0');
+          el.textContent = y+'-'+mo+'-'+day+' '+h+':'+m;
+        } else {
+          el.textContent = y+'-'+mo+'-'+day;
+        }
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function() { convertUtcTimestamps(); });
+  </script>
 </body>
 </html>
