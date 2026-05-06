@@ -1,12 +1,12 @@
-"""LinkedIn guest adapter.
+﻿"""LinkedIn guest adapter.
 
-Phase 1 — fetch
+Phase 1 â€” fetch
     GET /jobs-guest/jobs/api/seeMoreJobPostings/search
-    Paginate start=0, 10, 20 … until empty page or HTTP 400.
+    Paginate start=0, 10, 20 â€¦ until empty page or HTTP 400.
     Hard ceiling: start >= 1000 returns HTTP 400.
     Yields one LinkedInCard per card (basic fields only, no description).
 
-Phase 2 — enrich
+Phase 2 â€” enrich
     GET /jobs-guest/jobs/api/jobPosting/{job_id}
     Returns seniority, employment type, job function, industries, full description.
     Triggered by ``jobboard enrich --source linkedin_guest``.
@@ -64,7 +64,7 @@ class LinkedInAdapter:
         time.sleep(random.uniform(*_DELAY))
 
     # ------------------------------------------------------------------
-    # Phase 1 — search
+    # Phase 1 â€” search
     # ------------------------------------------------------------------
 
     def search(self) -> Iterator[LinkedInCard]:
@@ -158,12 +158,12 @@ class LinkedInAdapter:
             if r.status_code == 429:
                 if attempt < _MAX_429:
                     log.warning(
-                        "[%s] 429 rate-limited — waiting %ds (attempt %d/%d)",
+                        "[%s] 429 rate-limited â€” waiting %ds (attempt %d/%d)",
                         self.name, _RETRY_WAIT, attempt + 1, _MAX_429,
                     )
                     time.sleep(_RETRY_WAIT)
                     continue
-                log.error("[%s] 429 retries exhausted — stopping", self.name)
+                log.error("[%s] 429 retries exhausted â€” stopping", self.name)
                 return None
             try:
                 r.raise_for_status()
@@ -217,7 +217,7 @@ class LinkedInAdapter:
         )
 
     # ------------------------------------------------------------------
-    # Phase 2 — enrich
+    # Phase 2 â€” enrich
     # ------------------------------------------------------------------
 
     def fetch_detail(self, job_id: str) -> dict[str, Any]:
@@ -278,3 +278,4 @@ class LinkedInAdapter:
             description_text=desc_text,
             raw_detail_json=json.dumps(raw, ensure_ascii=False),
         )
+

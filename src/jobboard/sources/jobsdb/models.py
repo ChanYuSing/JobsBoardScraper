@@ -1,7 +1,7 @@
-"""JobsDB-specific data models.
+﻿"""JobsDB-specific data models.
 
 Frozen dataclasses: immutable by construction, safe to pass across layers.
-Fields correspond exactly to what JobsDB GraphQL returns — nothing invented,
+Fields correspond exactly to what JobsDB GraphQL returns â€” nothing invented,
 nothing shared with LinkedIn.
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ class JobsDBCard:
     subclassification: str | None   # e.g. "Developers/Programmers"
     work_types: str | None          # comma-separated e.g. "Full time"
     work_arrangement: str | None    # "Remote" | "Hybrid" | "On-site"
-    salary_label: str | None        # e.g. "HK$40,000 – HK$65,000 per month"
+    salary_label: str | None        # e.g. "HK$40,000 â€“ HK$65,000 per month"
     teaser: str | None
     bullet_points: str              # JSON-encoded list[str]
     listing_date_utc: str | None
@@ -46,3 +46,4 @@ class JobsDBDetail:
     expires_at_utc: str | None
     is_expired: bool | None
     raw_detail_json: str            # full JSON of the raw jobDetails payload
+

@@ -1,11 +1,10 @@
-"""Jobs service — unified query across job_jobsdb + job_linkedin."""
+﻿"""Jobs service â€” unified query across job_jobsdb + job_linkedin."""
 from __future__ import annotations
 
 import re
-import sqlite3
 from typing import Any
 
-# Ordered display columns (label → normalised name)
+# Ordered display columns (label â†’ normalised name)
 ALL_DISPLAY_COLS: list[tuple[str, str]] = [
     ("Title",           "title"),
     ("Company",         "company"),
@@ -15,6 +14,7 @@ ALL_DISPLAY_COLS: list[tuple[str, str]] = [
     ("Source",          "source"),
     ("Classification",  "classification"),
     ("Subcat.",         "subclassification"),
+    ("Description",     "description_text"),
     ("URL",             "url"),
     ("First seen",      "first_seen_at"),
 ]
@@ -31,7 +31,7 @@ def invalidate_filter_options_cache() -> None:
     _filter_opts_cache = None
 
 
-def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
+def get_filter_options(conn: object) -> dict[str, list[str]]:
     """Return distinct non-null values for each filterable column, for dropdown population."""
     global _filter_opts_cache
     if _filter_opts_cache is not None:
@@ -44,7 +44,7 @@ def get_filter_options(conn: sqlite3.Connection) -> dict[str, list[str]]:
     def _split_distinct(sql: str) -> list[str]:
         """Split comma-separated values, normalize hyphens/spaces, deduplicate."""
         rows = conn.execute(sql).fetchall()
-        seen: dict[str, str] = {}   # normalized_key → display_value
+        seen: dict[str, str] = {}   # normalized_key â†’ display_value
         for (raw,) in rows:
             if raw:
                 for part in str(raw).split(","):
@@ -71,18 +71,66 @@ SORTABLE: set[str] = {
 }
 
 
-def list_jobs(
-    conn: sqlite3.Connection,
+def _normalise_op(op: str | None) -> str:
+    """Return 'AND' or 'OR' (default OR)."""
+    return "AND" if (op or "").strip().lower() == "and" else "OR"
+
+
+def _multi_like_clause(
+    col_expr: str,
+    terms: list[str] | None,
+    op: str,
     *,
-    keyword: str = "",
+    negate: bool = False,
+) -> tuple[str, list[str]]:
+    """Build a parameterised LIKE clause across multiple terms joined by AND/OR.
+
+    - col_expr: SQL column expression (raw, e.g. "j.title").
+    - terms:    list of substrings; empty/blank are skipped.
+    - op:       'AND' | 'OR' joining of the per-term LIKEs.
+    - negate:   if True, wraps the whole clause with NOT(...) AND wraps the
+                column in COALESCE so NULLs aren't excluded from results.
+
+    For positive matches we deliberately do NOT wrap the column in COALESCE,
+    so Postgres can use the trigram index (LOWER(col) gin_trgm_ops). NULL
+    columns naturally fail LIKE — same end-user filtering effect.
+    """
+    if not terms:
+        return "", []
+    real = [t.strip() for t in terms if t and t.strip()]
+    if not real:
+        return "", []
+    op_sql = f" {_normalise_op(op)} "
+    if negate:
+        each = f"LOWER(COALESCE({col_expr},'')) LIKE ?"
+    else:
+        each = f"LOWER({col_expr}) LIKE ?"
+    inner = "(" + op_sql.join([each] * len(real)) + ")"
+    clause = f"NOT {inner}" if negate else inner
+    params = [f"%{t.lower()}%" for t in real]
+    return clause, params
+
+
+def list_jobs(
+    conn: object,
+    *,
+    keyword: list[str] | None = None,
+    keyword_op: str = "or",
     source: str = "",
     date_from: str = "",
     date_to: str = "",
     work_type: list[str] | None = None,
-    company: str = "",
-    location_kw: str = "",
-    classification: str = "",
-    subclassification_kw: str = "",
+    work_type_op: str = "or",
+    company: list[str] | None = None,
+    company_op: str = "or",
+    location_kw: list[str] | None = None,
+    location_kw_op: str = "or",
+    classification: list[str] | None = None,
+    classification_op: str = "or",
+    subclassification_kw: list[str] | None = None,
+    subclassification_kw_op: str = "or",
+    description_exclude: list[str] | None = None,
+    description_exclude_op: str = "or",
     first_seen_from: str = "",
     first_seen_to: str = "",
     triage: str = "",        # "saved" | "dismissed" | "new" | ""
@@ -105,31 +153,30 @@ def list_jobs(
     if date_to:
         where.append("j.date_posted <= ?")
         params.append(date_to)
-    if work_type:
-        clauses = " OR ".join("LOWER(j.work_type) LIKE ?" for _ in work_type)
-        where.append(f"({clauses})")
-        params.extend(f"%{wt.lower()}%" for wt in work_type)
-    if company:
-        where.append("LOWER(j.company) LIKE ?")
-        params.append(f"%{company.lower()}%")
-    if location_kw:
-        where.append("LOWER(j.location) LIKE ?")
-        params.append(f"%{location_kw.lower()}%")
-    if classification:
-        where.append("LOWER(COALESCE(j.classification,'')) LIKE ?")
-        params.append(f"%{classification.lower()}%")
-    if subclassification_kw:
-        where.append("LOWER(COALESCE(j.subclassification,'')) LIKE ?")
-        params.append(f"%{subclassification_kw.lower()}%")
+
+    # Multi-keyword text filters (all use chip UI with per-filter AND/OR op).
+    # Positive matches use raw "j.col" so the trigram GIN index applies.
+    # Only the NOT-wrapped exclude wraps with COALESCE (to preserve NULL rows).
+    for col_expr, terms, op, negate in (
+        ("j.title",             keyword,              keyword_op,              False),
+        ("j.work_type",         work_type,            work_type_op,            False),
+        ("j.company",           company,              company_op,              False),
+        ("j.location",          location_kw,          location_kw_op,          False),
+        ("j.classification",    classification,       classification_op,       False),
+        ("j.subclassification", subclassification_kw, subclassification_kw_op, False),
+        ("j.description_text",  description_exclude,  description_exclude_op,  True),
+    ):
+        cl, pr = _multi_like_clause(col_expr, terms, op, negate=negate)
+        if cl:
+            where.append(cl)
+            params.extend(pr)
+
     if first_seen_from:
         where.append("date(j.first_seen_at) >= ?")
         params.append(first_seen_from)
     if first_seen_to:
         where.append("date(j.first_seen_at) <= ?")
         params.append(first_seen_to)
-    if keyword:
-        where.append("LOWER(j.title) LIKE ?")
-        params.append(f"%{keyword.lower()}%")
     if triage == "saved":
         where.append("js.status = 'saved'")
     elif triage == "dismissed":
@@ -194,7 +241,7 @@ def list_jobs(
     return [dict(r) for r in rows], total
 
 
-def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any] | None:
+def get_job(conn: object, source: str, job_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         f"""
         SELECT j.*, COALESCE(js.status, 'new') AS triage_status
@@ -210,7 +257,7 @@ def get_job(conn: sqlite3.Connection, source: str, job_id: str) -> dict[str, Any
 
 
 def get_job_scores(
-    conn: sqlite3.Connection,
+    conn: object,
     jobs: list[dict[str, Any]],
     field_defs: list[dict[str, Any]],
 ) -> None:
@@ -243,7 +290,7 @@ def get_job_scores(
 _VALID_STATUSES = {"saved", "dismissed", "new"}
 
 
-def mark_job(conn: sqlite3.Connection, source: str, job_id: str, status: str) -> None:
+def mark_job(conn: object, source: str, job_id: str, status: str) -> None:
     """Set triage status ('saved'|'dismissed'); 'new' removes the row."""
     if status not in _VALID_STATUSES:
         raise ValueError(f"Invalid status '{status}': must be saved, dismissed, or new.")

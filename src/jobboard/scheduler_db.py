@@ -1,7 +1,6 @@
-"""Minimal read/write helpers for the scheduler_run table."""
+﻿"""Minimal read/write helpers for the scheduler_run table."""
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 
 
@@ -9,27 +8,30 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def log_run_start(conn: sqlite3.Connection, source: str, phase: str) -> int:
+def log_run_start(conn, source: str, phase: str) -> int:
     """Insert an in-progress scheduler_run row; return its id."""
     cur = conn.execute(
-        "INSERT INTO scheduler_run (source, phase, started_at, status) VALUES (?, ?, ?, 'running')",
+        "INSERT INTO scheduler_run (source, phase, started_at, status) "
+        "VALUES (?, ?, ?, 'running') RETURNING id",
         (source, phase, _now_iso()),
     )
+    new_id = cur.fetchone()[0]
     conn.commit()
-    return int(cur.lastrowid)
+    return int(new_id)
 
 
-def log_run_queued(conn: sqlite3.Connection, source: str, phase: str) -> int:
+def log_run_queued(conn, source: str, phase: str) -> int:
     """Insert a queued scheduler_run row (not yet started); return its id."""
     cur = conn.execute(
-        "INSERT INTO scheduler_run (source, phase, status) VALUES (?, ?, 'queued')",
+        "INSERT INTO scheduler_run (source, phase, status) VALUES (?, ?, 'queued') RETURNING id",
         (source, phase),
     )
+    new_id = cur.fetchone()[0]
     conn.commit()
-    return int(cur.lastrowid)
+    return int(new_id)
 
 
-def mark_run_active(conn: sqlite3.Connection, run_id: int) -> bool:
+def mark_run_active(conn: object, run_id: int) -> bool:
     """Transition a 'queued' row to 'running'. Returns False if already gone/cancelled."""
     cur = conn.execute(
         "UPDATE scheduler_run SET started_at = ?, status = 'running' WHERE id = ? AND status = 'queued'",
@@ -39,7 +41,7 @@ def mark_run_active(conn: sqlite3.Connection, run_id: int) -> bool:
     return cur.rowcount == 1
 
 
-def update_run_jobs_found(conn: sqlite3.Connection, run_id: int, count: int) -> None:
+def update_run_jobs_found(conn: object, run_id: int, count: int) -> None:
     """Write partial progress to jobs_found while a run is still active."""
     conn.execute(
         "UPDATE scheduler_run SET jobs_found = ? WHERE id = ? AND status = 'running'",
@@ -48,7 +50,7 @@ def update_run_jobs_found(conn: sqlite3.Connection, run_id: int, count: int) -> 
     conn.commit()
 
 
-def set_run_jobs_total(conn: sqlite3.Connection, run_id: int, total: int) -> None:
+def set_run_jobs_total(conn: object, run_id: int, total: int) -> None:
     """Store the total number of items to process (used for enrich phase)."""
     conn.execute(
         "UPDATE scheduler_run SET jobs_total = ? WHERE id = ?",
@@ -58,7 +60,7 @@ def set_run_jobs_total(conn: sqlite3.Connection, run_id: int, total: int) -> Non
 
 
 def log_run_finish(
-    conn: sqlite3.Connection,
+    conn: object,
     run_id: int,
     *,
     status: str,                   # ok | error | cancelled
@@ -80,7 +82,7 @@ def log_run_finish(
     conn.commit()
 
 
-def cancel_running_rows(conn: sqlite3.Connection) -> int:
+def cancel_running_rows(conn: object) -> int:
     """Mark all 'running' rows as 'cancelled' (user-initiated kill).
 
     Returns the number of rows updated.
@@ -98,7 +100,7 @@ def cancel_running_rows(conn: sqlite3.Connection) -> int:
     return cur.rowcount
 
 
-def cancel_run_by_id(conn: sqlite3.Connection, run_id: int) -> int:
+def cancel_run_by_id(conn: object, run_id: int) -> int:
     """Mark a specific run row as 'cancelled'.
 
     Returns 1 if the row was updated, 0 if not found or already finished.
@@ -117,7 +119,7 @@ def cancel_run_by_id(conn: sqlite3.Connection, run_id: int) -> int:
     return cur.rowcount
 
 
-def purge_all_runs(conn: sqlite3.Connection) -> int:
+def purge_all_runs(conn: object) -> int:
     """Delete every run record that is not currently 'running'.
 
     Returns the number of rows deleted.
@@ -127,7 +129,7 @@ def purge_all_runs(conn: sqlite3.Connection) -> int:
     return cur.rowcount
 
 
-def delete_runs_by_ids(conn: sqlite3.Connection, ids: list[int]) -> int:
+def delete_runs_by_ids(conn: object, ids: list[int]) -> int:
     """Delete specific run records by id. Running rows are protected.
 
     Returns the number of rows deleted.
@@ -141,3 +143,4 @@ def delete_runs_by_ids(conn: sqlite3.Connection, ids: list[int]) -> int:
     )
     conn.commit()
     return cur.rowcount
+

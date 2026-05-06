@@ -1,7 +1,7 @@
-"""LinkedIn-specific data models.
+﻿"""LinkedIn-specific data models.
 
 Frozen dataclasses: immutable by construction, safe to pass across layers.
-No shared supertype — these fields are exactly what the LinkedIn guest API
+No shared supertype â€” these fields are exactly what the LinkedIn guest API
 returns, nothing more, nothing less.
 """
 from __future__ import annotations
@@ -45,3 +45,4 @@ class LinkedInDetail:
     description_html: str | None
     description_text: str | None
     raw_detail_json: str             # full JSON of the raw detail payload
+

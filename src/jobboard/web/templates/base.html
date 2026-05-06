@@ -244,6 +244,20 @@
     .runs-error-cell { max-width: 300px; font-size: 0.8rem; color: var(--pico-muted-color); }
     .runs-kill-btn { padding: 0.22rem 0.9rem !important; font-size: 0.82rem !important; margin: 0 !important; border-color: #dc2626 !important; color: #dc2626 !important; }
     .runs-kill-btn:hover { background: #dc2626 !important; color: #fff !important; }
+    /* ── multi-keyword chip filter ── */
+    .kw-chip-list { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.4rem; min-height: 1.4rem; }
+    .kw-chip { display: inline-flex; align-items: center; gap: 0.3rem; background: #1d4ed8; color: #fff; border-radius: 999px; padding: 0.1rem 0.65rem; font-size: 0.78rem; line-height: 1.3; font-weight: 500; }
+    .kw-chip > span { color: #fff; }
+    .kw-chip__rm { background: transparent; border: none; color: #fff; cursor: pointer; padding: 0; font-size: 1rem; line-height: 1; opacity: 0.85; }
+    .kw-chip__rm:hover { opacity: 1; color: #fecaca; }
+    .kw-chip--exclude { background: #dc2626; }
+    .kw-input-row { display: flex; gap: 0.3rem; margin-bottom: 0.4rem; }
+    .kw-input-row input[type=search] { flex: 1; margin: 0 !important; min-width: 0; }
+    .kw-add-btn { padding: 0.15rem 0.55rem !important; margin: 0 !important; font-size: 0.78rem !important; }
+    .kw-op-row { display: flex; gap: 0.5rem; align-items: center; font-size: 0.78rem; margin-bottom: 0.45rem; color: var(--pico-muted-color); }
+    .kw-op-row label { display: inline-flex; align-items: center; gap: 0.2rem; cursor: pointer; }
+    .kw-op-row input[type=radio] { margin: 0 0.15rem 0 0 !important; }
+    .desc-cell { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pico-muted-color); font-size: 0.82rem; }
   </style>
   {% block head %}{% endblock %}
 </head>

@@ -1,9 +1,8 @@
-"""Typer CLI."""
+﻿"""Typer CLI."""
 from __future__ import annotations
 
 import logging
 import re
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -114,7 +113,7 @@ def fetch(
         raise typer.Exit(code=overall_exit)
 
 
-def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
+def _run_one_fetch(conn: object, cfg: Config, source: str) -> int:
     log.info("--- fetch source=%s ---", source)
     run_id = log_run_start(conn, source, "fetch")
     log.info("Starting run id=%d source=%s", run_id, source)
@@ -210,7 +209,7 @@ def _parse_since(s: str) -> datetime:
     return datetime.now(timezone.utc) - delta
 
 
-def _open_db(config_path: Path) -> sqlite3.Connection:
+def _open_db(config_path: Path) -> object:
     cfg = load_config(config_path)
     conn = connect(cfg.storage.sqlite_path)
     init_schema(conn)
@@ -293,7 +292,7 @@ def runs_kill(
     cfg = load_config(config_path)
     cancel_path = _cancel_file(cfg.storage.sqlite_path)
     cancel_path.touch()
-    typer.echo(f"Kill signal sent — the running job will stop at the next checkpoint.")
+    typer.echo(f"Kill signal sent â€” the running job will stop at the next checkpoint.")
     typer.echo(f"(Sentinel: {cancel_path})")
 
 
@@ -411,7 +410,7 @@ def enrich(
 
 
 def _enrich_one(
-    conn: sqlite3.Connection, adapter, source: str, limit: int, stale_days: int
+    conn: object, adapter, source: str, limit: int, stale_days: int
 ) -> int:
     stale = stale_days if stale_days > 0 else None
     lim = limit if limit > 0 else None
@@ -493,7 +492,7 @@ def _enrich_one(
 
     if blocked:
         log_run_finish(conn, run_id, status="error", jobs_found=ok,
-                       error=f"blocked by Cloudflare/rate-limit — ok={ok} err={err} remaining={len(job_ids)-ok-err}")
+                       error=f"blocked by Cloudflare/rate-limit â€” ok={ok} err={err} remaining={len(job_ids)-ok-err}")
         typer.echo(
             f"[{source}] Enrich BLOCKED. ok={ok}  err={err}  "
             f"remaining={len(job_ids) - ok - err}. Wait, then rerun."
@@ -504,7 +503,7 @@ def _enrich_one(
     return 0
 
 
-def _print_rows(rows: list[sqlite3.Row], cols: tuple[str, ...]) -> None:
+def _print_rows(rows: list[object], cols: tuple[str, ...]) -> None:
     if not rows:
         typer.echo("(no rows)")
         return

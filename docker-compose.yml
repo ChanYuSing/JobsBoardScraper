@@ -3,9 +3,9 @@ services:
     build: .
     ports:
       - "8001:8001"
+    env_file:
+      - .env                             # provides DATABASE_URL (Supabase)
     volumes:
-      - jobboard_data:/app/data          # named volume = fast native Linux I/O
+      - ./data:/app/data                 # still useful for any local files (logs, sentinels)
       - ./config.yaml:/app/config.yaml   # edit config without rebuilding
-
-volumes:
-  jobboard_data:
+    restart: unless-stopped

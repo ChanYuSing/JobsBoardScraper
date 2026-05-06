@@ -1,7 +1,6 @@
-"""Jobs routes."""
+﻿"""Jobs routes."""
 from __future__ import annotations
 
-import sqlite3
 from datetime import date as _date
 from urllib.parse import urlencode
 
@@ -37,15 +36,23 @@ router = APIRouter()
 @router.get("/jobs", response_class=HTMLResponse)
 def jobs_page(
     request: Request,
-    keyword: str = "",
+    keyword: list[str] = Query(default=[]),
+    keyword_op: str = "or",
     source: str = "",
     date_from: str = "",
     date_to: str = "",
     work_type: list[str] = Query(default=[]),
-    company: str = "",
-    location_kw: str = "",
-    classification: str = "",
-    subclassification_kw: str = "",
+    work_type_op: str = "or",
+    company: list[str] = Query(default=[]),
+    company_op: str = "or",
+    location_kw: list[str] = Query(default=[]),
+    location_kw_op: str = "or",
+    classification: list[str] = Query(default=[]),
+    classification_op: str = "or",
+    subclassification_kw: list[str] = Query(default=[]),
+    subclassification_kw_op: str = "or",
+    description_exclude: list[str] = Query(default=[]),
+    description_exclude_op: str = "or",
     first_seen_from: str = "",
     first_seen_to: str = "",
     triage: str = "",
@@ -55,9 +62,18 @@ def jobs_page(
     col: list[str] = Query(default=[]),
     page: int = 1,
     page_size: int = 15,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     page_size = max(1, min(page_size, 1000))
+    # Strip blank entries that arise from empty <input>s in the form post.
+    def _clean(xs: list[str]) -> list[str]:
+        return [x for x in (s.strip() for s in xs) if x]
+    keyword              = _clean(keyword)
+    company              = _clean(company)
+    location_kw          = _clean(location_kw)
+    classification       = _clean(classification)
+    subclassification_kw = _clean(subclassification_kw)
+    description_exclude  = _clean(description_exclude)
     field_defs = get_field_defs(conn)
     score_display_cols = [(f["label"], f["name"]) for f in field_defs]
     score_int_keys = {f["name"] for f in field_defs if f["type"] == "int"}
@@ -82,12 +98,15 @@ def jobs_page(
 
     jobs, total = list_jobs(
         conn,
-        keyword=keyword, source=source,
+        keyword=keyword, keyword_op=keyword_op,
+        source=source,
         date_from=date_from, date_to=date_to,
-        work_type=work_type,
-        company=company, location_kw=location_kw,
-        classification=classification,
-        subclassification_kw=subclassification_kw,
+        work_type=work_type, work_type_op=work_type_op,
+        company=company, company_op=company_op,
+        location_kw=location_kw, location_kw_op=location_kw_op,
+        classification=classification, classification_op=classification_op,
+        subclassification_kw=subclassification_kw, subclassification_kw_op=subclassification_kw_op,
+        description_exclude=description_exclude, description_exclude_op=description_exclude_op,
         first_seen_from=first_seen_from,
         first_seen_to=first_seen_to,
         triage=triage,
@@ -102,29 +121,42 @@ def jobs_page(
 
     # build base filter params dict (without page) for pagination links
     scalar_fp = dict(
-        keyword=keyword, source=source, date_from=date_from, date_to=date_to,
-        company=company,
-        location_kw=location_kw, classification=classification,
-        subclassification_kw=subclassification_kw,
+        source=source, date_from=date_from, date_to=date_to,
         first_seen_from=first_seen_from,
         first_seen_to=first_seen_to,
         triage=triage,
         sort_by=sort_by, sort_dir=sort_dir,
         cols=cols_param, page_size=str(page_size) if page_size != 15 else "",
     )
+    list_fp: dict[str, list[str]] = {
+        "keyword": keyword, "company": company, "location_kw": location_kw,
+        "classification": classification, "subclassification_kw": subclassification_kw,
+        "description_exclude": description_exclude, "work_type": work_type,
+    }
+    op_fp = {
+        "keyword_op": keyword_op if keyword else "",
+        "company_op": company_op if company else "",
+        "location_kw_op": location_kw_op if location_kw else "",
+        "classification_op": classification_op if classification else "",
+        "subclassification_kw_op": subclassification_kw_op if subclassification_kw else "",
+        "description_exclude_op": description_exclude_op if description_exclude else "",
+        "work_type_op": work_type_op if work_type else "",
+    }
     active_filter_count = (
-        sum(1 for k, v in scalar_fp.items() if v and k not in (
-            "cols", "triage", "sort_by", "sort_dir", "page_size",
-            "date_from", "date_to", "first_seen_from", "first_seen_to",
-        ))
+        (1 if source else 0)
         + (1 if (date_from or date_to) else 0)
         + (1 if (first_seen_from or first_seen_to) else 0)
-        + (1 if work_type else 0)
+        + (1 if triage else 0)
+        + sum(1 for v in list_fp.values() if v)
         + len(score_filters)
     )
     qs_parts: dict[str, object] = {k: v for k, v in scalar_fp.items() if v}
-    if work_type:
-        qs_parts["work_type"] = work_type
+    for k, vs in list_fp.items():
+        if vs:
+            qs_parts[k] = vs
+    for k, v in op_fp.items():
+        if v:
+            qs_parts[k] = v
     for _name, _val in score_filters.items():
         qs_parts[f"score_min_{_name}"] = _val
     page_qs = urlencode(qs_parts, doseq=True)
@@ -151,14 +183,22 @@ def jobs_page(
             "score_filters": score_filters,
             # individual filter values
             "f_keyword": keyword,
+            "f_keyword_op": keyword_op,
             "f_source": source,
             "f_date_from": date_from,
             "f_date_to": date_to,
             "f_work_type": work_type,        # list[str]
+            "f_work_type_op": work_type_op,
             "f_company": company,
+            "f_company_op": company_op,
             "f_location_kw": location_kw,
+            "f_location_kw_op": location_kw_op,
             "f_classification": classification,
+            "f_classification_op": classification_op,
             "f_subclassification_kw": subclassification_kw,
+            "f_subclassification_kw_op": subclassification_kw_op,
+            "f_description_exclude": description_exclude,
+            "f_description_exclude_op": description_exclude_op,
             "f_first_seen_from": first_seen_from,
             "f_first_seen_to": first_seen_to,
             "f_triage": triage,
@@ -176,7 +216,7 @@ def job_detail(
     request: Request,
     source: str,
     job_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     job = get_job(conn, source, job_id)
     if job is None:
@@ -193,7 +233,7 @@ def job_panel(
     request: Request,
     source: str,
     job_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     job = get_job(conn, source, job_id)
     if job is None:
@@ -212,7 +252,7 @@ async def mark_ajax(
     source: str,
     job_id: str,
     request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     body = await request.json()
     status = body.get("status", "new")
@@ -228,7 +268,7 @@ async def mark(
     source: str,
     job_id: str,
     request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     form_data = await request.form()
     status               = str(form_data.get("status", "new"))

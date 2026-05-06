@@ -1,7 +1,6 @@
-"""Analyse routes."""
+﻿"""Analyse routes."""
 from __future__ import annotations
 
-import sqlite3
 import threading
 from typing import Any
 
@@ -70,7 +69,7 @@ def analyse_page(
     request: Request,
     flash: str = "",
     flash_type: str = "",
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     ai = get_ai_config(CONFIG_PATH)
     field_defs = get_field_defs(conn)
@@ -95,7 +94,7 @@ def analyse_page(
 @router.post("/analyse/save")
 async def analyse_save(
     request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     form = await request.form()
     form_ai = _form_ai(form)
@@ -147,7 +146,7 @@ async def analyse_save(
 @router.post("/analyse/preview")
 async def analyse_preview(
     request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     try:
         form = await request.form()
@@ -167,7 +166,7 @@ async def analyse_preview(
 @router.post("/analyse/score")
 async def analyse_score(
     request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     """Enqueue a score-all task on the shared run queue.  Returns immediately."""
     # Read form data BEFORE acquiring the lock so the async yield happens
@@ -201,7 +200,7 @@ async def analyse_score(
     def _finish_watcher() -> None:
         task.done_event.wait()
         with _score_lock:
-            _score_state["message"] = f"Done — {scored_ref[0]} scored, {errors_ref[0]} errors."
+            _score_state["message"] = f"Done â€” {scored_ref[0]} scored, {errors_ref[0]} errors."
             _score_state["running"] = False
 
     threading.Thread(target=_finish_watcher, daemon=True).start()
@@ -226,7 +225,7 @@ async def analyse_test(request: Request):
 
 @router.get("/analyse/score/status")
 def analyse_score_status():
-    """Poll endpoint — returns current scoring task state."""
+    """Poll endpoint â€” returns current scoring task state."""
     with _score_lock:
         return JSONResponse(dict(_score_state))
 

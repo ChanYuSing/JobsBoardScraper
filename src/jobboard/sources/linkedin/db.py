@@ -1,18 +1,14 @@
-"""LinkedIn-specific DB operations.
+﻿"""LinkedIn-specific DB operations.
 
 Each function operates exclusively on the ``job_linkedin`` table.
 No cross-source code; no shared abstractions.
 """
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Literal
 
 from .models import LinkedInCard, LinkedInDetail
-
-_SCHEMA_SQL = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
 
 
 def _now_iso() -> str:
@@ -25,16 +21,16 @@ def _now_minus_days(days: int) -> str:
     )
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    """Apply the job_linkedin table schema (idempotent)."""
-    conn.executescript(_SCHEMA_SQL)
+def init_schema(conn) -> None:
+    """No-op: schema is now applied centrally by jobboard.db.init_schema()."""
+    return None
 
 
 UpsertOutcome = Literal["inserted", "updated"]
 
 
 def upsert_card(
-    conn: sqlite3.Connection, card: LinkedInCard
+    conn: object, card: LinkedInCard
 ) -> UpsertOutcome:
     """Insert a new LinkedIn job or refresh an existing one. Returns outcome."""
     now = _now_iso()
@@ -107,7 +103,7 @@ def upsert_card(
 
 
 def jobs_needing_enrich(
-    conn: sqlite3.Connection,
+    conn: object,
     *,
     stale_days: int | None = None,
     limit: int | None = None,
@@ -131,7 +127,7 @@ def jobs_needing_enrich(
 
 
 def upsert_detail(
-    conn: sqlite3.Connection,
+    conn: object,
     job_id: str,
     detail: LinkedInDetail,
 ) -> None:
@@ -171,7 +167,7 @@ def upsert_detail(
 
 
 def record_detail_error(
-    conn: sqlite3.Connection,
+    conn: object,
     job_id: str,
     error: str,
 ) -> None:
@@ -181,3 +177,4 @@ def record_detail_error(
         "UPDATE job_linkedin SET detail_error = ? WHERE job_id = ?",
         (error[:500], job_id),
     )
+

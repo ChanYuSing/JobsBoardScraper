@@ -1,4 +1,4 @@
-"""Source adapters: one per job board."""
+﻿"""Source adapters: one per job board."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -28,3 +28,4 @@ def build_adapter(name: str, cfg: "Config"):
 
 
 __all__ = ["KNOWN_SOURCES", "build_adapter"]
+

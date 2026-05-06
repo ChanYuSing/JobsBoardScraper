@@ -1,18 +1,14 @@
-"""JobsDB-specific DB operations.
+﻿"""JobsDB-specific DB operations.
 
 Each function operates exclusively on the ``job_jobsdb`` table.
 No cross-source code; no shared abstractions.
 """
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Literal
 
 from .models import JobsDBCard, JobsDBDetail
-
-_SCHEMA_SQL = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
 
 
 def _now_iso() -> str:
@@ -25,16 +21,16 @@ def _now_minus_days(days: int) -> str:
     )
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    """Apply the job_jobsdb table schema (idempotent)."""
-    conn.executescript(_SCHEMA_SQL)
+def init_schema(conn) -> None:
+    """No-op: schema is now applied centrally by jobboard.db.init_schema()."""
+    return None
 
 
 UpsertOutcome = Literal["inserted", "updated"]
 
 
 def upsert_card(
-    conn: sqlite3.Connection, card: JobsDBCard
+    conn: object, card: JobsDBCard
 ) -> UpsertOutcome:
     """Insert a new JobsDB job or refresh an existing one. Returns outcome."""
     now = _now_iso()
@@ -128,7 +124,7 @@ def upsert_card(
 
 
 def jobs_needing_enrich(
-    conn: sqlite3.Connection,
+    conn: object,
     *,
     stale_days: int | None = None,
     limit: int | None = None,
@@ -152,7 +148,7 @@ def jobs_needing_enrich(
 
 
 def upsert_detail(
-    conn: sqlite3.Connection,
+    conn: object,
     job_id: str,
     detail: JobsDBDetail,
 ) -> None:
@@ -184,7 +180,7 @@ def upsert_detail(
 
 
 def record_detail_error(
-    conn: sqlite3.Connection,
+    conn: object,
     job_id: str,
     error: str,
 ) -> None:
@@ -194,3 +190,4 @@ def record_detail_error(
         "UPDATE job_jobsdb SET detail_error = ? WHERE job_id = ?",
         (error[:500], job_id),
     )
+

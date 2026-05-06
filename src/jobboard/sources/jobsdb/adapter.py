@@ -1,13 +1,13 @@
-"""JobsDB adapter: wraps the SEEK GraphQL API.
+﻿"""JobsDB adapter: wraps the SEEK GraphQL API.
 
-Phase 1 — fetch
-    POST /graphql  (jobSearchV6) — paginated card data.
+Phase 1 â€” fetch
+    POST /graphql  (jobSearchV6) â€” paginated card data.
     Cloudflare blocks are surfaced as CloudflareBlockedError so the CLI can
     record the last good page and suggest a ``--start-page`` resume command.
     Yields one JobsDBCard per search result.
 
-Phase 2 — enrich
-    POST /graphql  (jobDetails) — full description per job ID.
+Phase 2 â€” enrich
+    POST /graphql  (jobDetails) â€” full description per job ID.
     Triggered by ``jobboard enrich --source jobsdb``.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ GRAPHQL_URL = "https://hk.jobsdb.com/graphql"
 _DEFAULT_INCLUDE       = ["seoData", "gptTargeting", "relatedSearches"]
 _DEFAULT_QUERY_HINTS   = ["spellingCorrection"]
 
-# Human-readable config values → GraphQL API codes.
+# Human-readable config values â†’ GraphQL API codes.
 _WORK_ARRANGEMENT_MAP: dict[str, str] = {
     "on-site": "1", "onsite": "1",
     "hybrid":  "2",
@@ -119,7 +119,7 @@ def _looks_like_cloudflare_block(status: int, body: str, headers) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# HTML → plain text (needed for description_text)
+# HTML â†’ plain text (needed for description_text)
 # ---------------------------------------------------------------------------
 
 class _Stripper(HTMLParser):
@@ -162,7 +162,7 @@ def _html_to_text(html: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Internal GraphQL client (self-contained — no top-level client.py dependency)
+# Internal GraphQL client (self-contained â€” no top-level client.py dependency)
 # ---------------------------------------------------------------------------
 
 class _Client:
@@ -390,7 +390,7 @@ class JobsDBAdapter:
         self._client.sleep_jitter()
 
     # ------------------------------------------------------------------
-    # Phase 1 — search
+    # Phase 1 â€” search
     # ------------------------------------------------------------------
 
     def search(self) -> Iterator[JobsDBCard]:
@@ -411,7 +411,7 @@ class JobsDBAdapter:
             yield page, cards, payload.get("totalCount")
 
     # ------------------------------------------------------------------
-    # Phase 2 — enrich
+    # Phase 2 â€” enrich
     # ------------------------------------------------------------------
 
     def fetch_detail(self, job_id: str) -> dict[str, Any]:
@@ -432,3 +432,4 @@ class JobsDBAdapter:
             is_expired=job.get("isExpired"),
             raw_detail_json=json.dumps(payload, ensure_ascii=False),
         )
+

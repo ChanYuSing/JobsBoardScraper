@@ -1,7 +1,6 @@
-"""Runs routes."""
+﻿"""Runs routes."""
 from __future__ import annotations
 
-import sqlite3
 import time
 from typing import Generator
 
@@ -19,7 +18,7 @@ def runs_page(
     request: Request,
     flash: str = "",
     flash_type: str = "",
-    conn: sqlite3.Connection = Depends(get_db),
+    conn: object = Depends(get_db),
 ):
     runs = list_runs(conn)
     return templates.TemplateResponse(
@@ -68,7 +67,7 @@ def kill_run(run_id: int = Form(...)):
 
 
 @router.post("/runs/purge")
-def purge_runs(conn: sqlite3.Connection = Depends(get_db)):
+def purge_runs(conn: object = Depends(get_db)):
     """Delete all non-running run records."""
     deleted = purge_all_runs(conn)
     return RedirectResponse(
@@ -77,7 +76,7 @@ def purge_runs(conn: sqlite3.Connection = Depends(get_db)):
 
 
 @router.post("/runs/delete-selected")
-async def delete_selected(request: Request, conn: sqlite3.Connection = Depends(get_db)):
+async def delete_selected(request: Request, conn: object = Depends(get_db)):
     """Delete the run records whose checkboxes were ticked."""
     form = await request.form()
     ids = [int(v) for v in form.getlist("run_ids") if str(v).isdigit()]
@@ -89,7 +88,7 @@ async def delete_selected(request: Request, conn: sqlite3.Connection = Depends(g
 
 @router.get("/runs/progress-stream")
 def progress_stream():
-    """SSE — pushes live jobs_found every 2 s while a run is active, then 'done'."""
+    """SSE â€” pushes live jobs_found every 2 s while a run is active, then 'done'."""
     import json
     from ...scheduler import _run_active, _run_queue
     from ...db import connect as db_connect

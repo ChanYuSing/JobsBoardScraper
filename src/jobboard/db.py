@@ -1,106 +1,307 @@
-"""SQLite: connect, init, run lifecycle."""
+﻿"""Postgres (Supabase) connection layer.
+
+Provides a thin sqlite3-compatible wrapper around psycopg3 so the rest of the
+codebase can keep its existing ``conn.execute(sql, params)`` style. The wrapper
+translates SQLite-style placeholders (``?`` and ``:name``) into psycopg's
+``%s`` / ``%(name)s`` form on every call.
+
+Connection details are read from the ``DATABASE_URL`` env var (loaded from
+``.env`` if present). Designed for Supabase's PgBouncer transaction-mode
+pooler â€” prepared statements are disabled.
+"""
 from __future__ import annotations
 
-import sqlite3
+import os
+import re
+import threading
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
+from typing import Any, Mapping
+
+import psycopg
+from psycopg_pool import ConnectionPool
+
+try:  # optional convenience: load .env at import time
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+except Exception:  # noqa: BLE001
+    pass
 
 
-# Schema lives next to the package (see [tool.setuptools.package-data] in pyproject.toml).
-_SCHEMA_SQL = files(__package__).joinpath("schema.sql").read_text(encoding="utf-8")
+_SCHEMA_SQL = files(__package__).joinpath("schema_pg.sql").read_text(encoding="utf-8")
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+# â”€â”€â”€ Placeholder translation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# SQLite uses `?` (positional) and `:name` (named).
+# psycopg3 uses `%s`     (positional) and `%(name)s` (named).
+# We translate before sending the SQL to the driver.
+
+_NAMED_RE = re.compile(r":([A-Za-z_][A-Za-z0-9_]*)")
 
 
-# ---------------------------------------------------------------------------
-# Connect / init
-# ---------------------------------------------------------------------------
-def connect(path: str | Path) -> sqlite3.Connection:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(p, check_same_thread=False, timeout=5)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA temp_store=MEMORY;")
-    conn.execute("PRAGMA cache_size=-65536;")  # 64 MB page cache
-    conn.execute("PRAGMA busy_timeout=5000;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+def _translate_sql(sql: str, params: Any) -> str:
+    if isinstance(params, Mapping):
+        return _NAMED_RE.sub(r"%(\1)s", sql)
+    if params is None:
+        return sql
+    if "?" in sql:
+        return sql.replace("?", "%s")
+    return sql
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    """Apply shared schema and per-source schemas.
+# â”€â”€â”€ object-like row class â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    Does NOT sweep orphan runs — call sweep_orphan_runs() separately, once
-    at process startup, so that in-flight queued rows created by this process
-    are not immediately cancelled.
+class _Row:
+    """Mimics object: subscriptable by index AND name; iterable; .keys()."""
+    __slots__ = ("_cols", "_vals", "_idx")
+
+    def __init__(self, cols: list[str], values: tuple) -> None:
+        self._cols = cols
+        self._vals = values
+        self._idx = {c: i for i, c in enumerate(cols)}
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._vals[key]
+        return self._vals[self._idx[key]]
+
+    def get(self, key, default=None):
+        if isinstance(key, int):
+            return self._vals[key] if -len(self._vals) <= key < len(self._vals) else default
+        i = self._idx.get(key)
+        return self._vals[i] if i is not None else default
+
+    def keys(self):
+        return list(self._cols)
+
+    def __iter__(self):
+        return iter(self._vals)
+
+    def __len__(self):
+        return len(self._vals)
+
+    def __contains__(self, key):
+        return key in self._idx
+
+    def __repr__(self):
+        return f"_Row({dict(zip(self._cols, self._vals))!r})"
+
+
+def _row_factory(cursor):
+    cols = [c.name for c in cursor.description] if cursor.description else []
+    def make(values):
+        return _Row(cols, tuple(values))
+    return make
+
+
+# â”€â”€â”€ Cursor wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class _CurWrap:
+    """Wraps a psycopg cursor so .fetchone() / fetchall() / rowcount feel like sqlite."""
+
+    def __init__(self, cur: psycopg.Cursor) -> None:
+        self._cur = cur
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size) if size is not None else self._cur.fetchmany()
+
+    @property
+    def rowcount(self) -> int:
+        return self._cur.rowcount
+
+    @property
+    def description(self):
+        return self._cur.description
+
+    def close(self):
+        self._cur.close()
+
+    def __iter__(self):
+        return iter(self._cur)
+
+
+# â”€â”€â”€ Connection wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class PgConn:
+    """sqlite3-style facade around a psycopg connection."""
+
+    def __init__(self, raw: psycopg.Connection) -> None:
+        self._raw = raw
+
+    def execute(self, sql: str, params: Any = None) -> _CurWrap:
+        translated = _translate_sql(sql, params)
+        cur = self._raw.cursor(row_factory=_row_factory)
+        if params is None:
+            cur.execute(translated)
+        else:
+            cur.execute(translated, params)
+        return _CurWrap(cur)
+
+    def executescript(self, sql: str) -> None:
+        """Run a multi-statement script. psycopg3 supports `;`-separated DDL."""
+        with self._raw.cursor() as cur:
+            cur.execute(sql)
+
+    def cursor(self) -> _CurWrap:
+        return _CurWrap(self._raw.cursor(row_factory=_row_factory))
+
+    def commit(self) -> None:
+        self._raw.commit()
+
+    def rollback(self) -> None:
+        self._raw.rollback()
+
+    def close(self) -> None:
+        try:
+            self._raw.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self.commit()
+        else:
+            self.rollback()
+        return False
+
+
+# â”€â”€â”€ Connect / init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+_url_lock = threading.Lock()
+_DATABASE_URL: str | None = None
+
+
+def _get_url() -> str:
+    global _DATABASE_URL
+    with _url_lock:
+        if _DATABASE_URL is None:
+            url = os.environ.get("DATABASE_URL", "").strip()
+            if not url:
+                raise RuntimeError(
+                    "DATABASE_URL is not set. Create a .env file at the repo root "
+                    "with: DATABASE_URL=postgresql://...:6543/postgres"
+                )
+            _DATABASE_URL = url
+        return _DATABASE_URL
+
+
+def connect(_path_unused: Any = None) -> PgConn:
+    """Open a new (unpooled) Postgres connection.
+
+    Used by CLI commands and one-off scripts. The path arg is accepted but
+    ignored — kept for backward compatibility with the old SQLite call sites.
+    For high-throughput web request handling, prefer ``pool_conn()`` instead.
     """
-    _migrate_analysis_schema(conn)
-    _migrate_scheduler_run(conn)
-    _migrate_drop_run_refs(conn)
+    url = _get_url()
+    # Disable prepared statements — required for Supabase's PgBouncer
+    # transaction-mode pooler (port 6543).
+    raw = psycopg.connect(url, prepare_threshold=None, autocommit=False)
+    return PgConn(raw)
+
+
+# ─── Connection pool (shared across web requests) ──────────────────────────
+
+_pool: ConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> ConnectionPool:
+    """Lazy global connection pool.
+
+    Pool size is small (max=8) because the Supabase free tier shares a
+    60-connection pooler budget across the project. The pooler itself
+    multiplexes our 8 client conns over far fewer Postgres backends.
+    """
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ConnectionPool(
+                conninfo=_get_url(),
+                min_size=1,
+                max_size=8,
+                # Match `connect()` settings — required for Supabase pgbouncer.
+                kwargs={"prepare_threshold": None, "autocommit": False},
+                open=True,
+            )
+        return _pool
+
+
+class _PoolConn(PgConn):
+    """A PgConn that returns its underlying connection to the pool on close()."""
+    def __init__(self, raw: psycopg.Connection, pool: ConnectionPool) -> None:
+        super().__init__(raw)
+        self._pool = pool
+
+    def close(self) -> None:
+        try:
+            # Return to pool instead of really closing.
+            self._pool.putconn(self._raw)
+        except Exception:
+            try:
+                self._raw.close()
+            except Exception:
+                pass
+
+
+def pool_conn() -> _PoolConn:
+    """Check out a connection from the shared pool.
+
+    Call ``.close()`` (or use it as a context manager) to return it.
+    Designed for FastAPI's per-request dependency injection pattern.
+    """
+    pool = _get_pool()
+    raw = pool.getconn()
+    return _PoolConn(raw, pool)
+
+
+def close_pool() -> None:
+    """Close the shared pool. Call from FastAPI lifespan shutdown."""
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            try:
+                _pool.close()
+            finally:
+                _pool = None
+
+
+def init_schema(conn: PgConn) -> None:
+    """Apply the Postgres schema (idempotent). Safe to call on every startup."""
     conn.executescript(_SCHEMA_SQL)
-    from .sources.linkedin import db as li_db
-    li_db.init_schema(conn)
-    from .sources.jobsdb import db as jdb_db
-    jdb_db.init_schema(conn)
-    conn.commit()
-    _populate_job_all(conn)
-
-
-def _populate_job_all(conn: sqlite3.Connection) -> None:
-    """Backfill job_all from source tables if empty (first run or after reset)."""
-    count = conn.execute("SELECT COUNT(*) FROM job_all").fetchone()[0]
-    if count > 0:
-        return
-    conn.execute("""
-        INSERT INTO job_all
-            (source, job_id, title, company, location, work_type, work_arrangement,
-             salary, date_posted, classification, subclassification, teaser,
-             description_text, description_html, url, first_seen_at, detail_fetched_at)
-        SELECT
-            'jobsdb', job_id, title, company, location,
-            work_types, work_arrangement, salary_label, listing_date_utc,
-            classification, subclassification, teaser,
-            description_text, description_html, url, first_seen_at, detail_fetched_at
-        FROM job_jobsdb
-        UNION ALL
-        SELECT
-            'linkedin_guest', job_id, title, company, location,
-            employment_type, NULL, NULL, date_posted,
-            industries, job_function, NULL,
-            description_text, description_html, url, first_seen_at, detail_fetched_at
-        FROM job_linkedin
-    """)
     conn.commit()
 
 
-def sync_fields_full(conn: sqlite3.Connection, fields: list) -> list[str]:
+def sync_fields_full(conn: PgConn, fields: list) -> list[str]:
     """Full sync: upsert all given fields, delete any not present.
 
-    Returns list of deleted field names (those with existing scores are still deleted —
-    caller must confirm first).
-    ``fields`` is a list of FieldCfg objects.
+    ``fields`` is a list of FieldCfg objects. Returns names of deleted fields.
     """
-    incoming_names = {f.name for f in fields}
-    existing = conn.execute("SELECT id, name FROM field_def").fetchall()
-    deleted = []
-    for row in existing:
-        if row["name"] not in incoming_names:
-            conn.execute("DELETE FROM field_def WHERE id = ?", (row["id"],))
-            deleted.append(row["name"])
+    incoming = {f.name for f in fields}
+    rows = conn.execute("SELECT id, name FROM field_def").fetchall()
+    deleted: list[str] = []
+    for r in rows:
+        if r["name"] not in incoming:
+            conn.execute("DELETE FROM field_def WHERE id = ?", (r["id"],))
+            deleted.append(r["name"])
     for i, f in enumerate(fields):
         conn.execute(
             """
             INSERT INTO field_def (name, type, description, sort_order)
             VALUES (?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                type        = excluded.type,
-                description = excluded.description,
-                sort_order  = excluded.sort_order
+            ON CONFLICT (name) DO UPDATE SET
+                type        = EXCLUDED.type,
+                description = EXCLUDED.description,
+                sort_order  = EXCLUDED.sort_order
             """,
             (f.name, f.type, f.description, i),
         )
@@ -108,171 +309,18 @@ def sync_fields_full(conn: sqlite3.Connection, fields: list) -> list[str]:
     return deleted
 
 
-def _migrate_drop_run_refs(conn: sqlite3.Connection) -> None:
-    """Drop the old run table and its FK columns from both job tables."""
-    # job_jobsdb — rebuild without FK columns if they still exist
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(job_jobsdb)").fetchall()}
-    if "first_seen_run_id" in cols or "last_seen_run_id" in cols:
-        conn.executescript("""
-            BEGIN;
-            CREATE TABLE _job_jobsdb_new (
-                job_id              TEXT PRIMARY KEY,
-                url                 TEXT,
-                title               TEXT NOT NULL,
-                company             TEXT,
-                location            TEXT,
-                classification      TEXT,
-                subclassification   TEXT,
-                work_types          TEXT,
-                work_arrangement    TEXT,
-                salary_label        TEXT,
-                teaser              TEXT,
-                bullet_points       TEXT,
-                listing_date_utc    TEXT,
-                listing_date_label  TEXT,
-                description_html    TEXT,
-                description_text    TEXT,
-                abstract            TEXT,
-                expires_at_utc      TEXT,
-                is_expired          INTEGER,
-                first_seen_at       TEXT NOT NULL,
-                last_seen_at        TEXT NOT NULL,
-                detail_fetched_at   TEXT,
-                detail_error        TEXT,
-                raw_card_json       TEXT,
-                raw_detail_json     TEXT
-            );
-            INSERT INTO _job_jobsdb_new
-                SELECT job_id, url, title, company, location,
-                       classification, subclassification, work_types, work_arrangement,
-                       salary_label, teaser, bullet_points, listing_date_utc,
-                       listing_date_label, description_html, description_text,
-                       abstract, expires_at_utc, is_expired,
-                       first_seen_at, last_seen_at,
-                       detail_fetched_at, detail_error,
-                       raw_card_json, raw_detail_json
-                  FROM job_jobsdb;
-            DROP TABLE job_jobsdb;
-            ALTER TABLE _job_jobsdb_new RENAME TO job_jobsdb;
-            COMMIT;
-        """)
+def sweep_orphan_runs(conn: PgConn) -> None:
+    """Mark stale scheduler_run rows from a previous crashed process.
 
-    # job_linkedin — rebuild without FK columns if they still exist
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(job_linkedin)").fetchall()}
-    if "first_seen_run_id" in cols or "last_seen_run_id" in cols:
-        conn.executescript("""
-            BEGIN;
-            CREATE TABLE _job_linkedin_new (
-                job_id              TEXT PRIMARY KEY,
-                url                 TEXT,
-                title               TEXT NOT NULL,
-                company             TEXT,
-                company_url         TEXT,
-                company_logo_url    TEXT,
-                location            TEXT,
-                date_posted         TEXT,
-                benefit_text        TEXT,
-                seniority_level     TEXT,
-                employment_type     TEXT,
-                job_function        TEXT,
-                industries          TEXT,
-                num_applicants      TEXT,
-                description_text    TEXT,
-                description_html    TEXT,
-                first_seen_at       TEXT NOT NULL,
-                last_seen_at        TEXT NOT NULL,
-                detail_fetched_at   TEXT,
-                detail_error        TEXT,
-                raw_card_json       TEXT,
-                raw_detail_json     TEXT
-            );
-            INSERT INTO _job_linkedin_new
-                SELECT job_id, url, title, company, company_url, company_logo_url,
-                       location, date_posted, benefit_text,
-                       seniority_level, employment_type, job_function, industries,
-                       num_applicants, description_text, description_html,
-                       first_seen_at, last_seen_at,
-                       detail_fetched_at, detail_error,
-                       raw_card_json, raw_detail_json
-                  FROM job_linkedin;
-            DROP TABLE job_linkedin;
-            ALTER TABLE _job_linkedin_new RENAME TO job_linkedin;
-            COMMIT;
-        """)
-
-    # Drop the old run table (no longer written to)
-    conn.execute("DROP INDEX IF EXISTS idx_run_source")
-    conn.execute("DROP TABLE IF EXISTS run")
-    conn.commit()
-
-
-def _migrate_analysis_schema(conn: sqlite3.Connection) -> None:
-    """Drop analysis tables that have an outdated schema."""
-    ja_cols = {r[1] for r in conn.execute("PRAGMA table_info(job_analysis)").fetchall()}
-    fd_cols = {r[1] for r in conn.execute("PRAGMA table_info(field_def)").fetchall()}
-    # Drop if job_analysis predates EAV, or if field_def still has the old label column
-    if (ja_cols and "field_id" not in ja_cols) or "label" in fd_cols:
-        conn.execute("DROP TABLE IF EXISTS job_analysis")
-        conn.execute("DROP TABLE IF EXISTS field_def")
-        conn.commit()
-
-
-def _migrate_scheduler_run(conn: sqlite3.Connection) -> None:
-    """Fix scheduler_run schema: drop NOT NULL on started_at, add jobs_total."""
-    cols_info = conn.execute("PRAGMA table_info(scheduler_run)").fetchall()
-    if not cols_info:
-        return  # table doesn't exist yet; CREATE TABLE IF NOT EXISTS will handle it
-
-    col_map = {r[1]: r for r in cols_info}  # name -> row
-
-    needs_recreate = False
-    # started_at must be nullable (notnull flag = 0)
-    if "started_at" in col_map and col_map["started_at"][3] == 1:  # notnull==1
-        needs_recreate = True
-
-    if needs_recreate:
-        conn.executescript("""
-            BEGIN;
-            ALTER TABLE scheduler_run RENAME TO _scheduler_run_old;
-            CREATE TABLE scheduler_run (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                source       TEXT    NOT NULL,
-                phase        TEXT    NOT NULL,
-                started_at   TEXT,
-                finished_at  TEXT,
-                status       TEXT    NOT NULL,
-                jobs_found   INTEGER,
-                jobs_total   INTEGER,
-                error        TEXT
-            );
-            INSERT INTO scheduler_run
-                (id, source, phase, started_at, finished_at, status, jobs_found, error)
-            SELECT id, source, phase, started_at, finished_at, status, jobs_found, error
-              FROM _scheduler_run_old;
-            DROP TABLE _scheduler_run_old;
-            COMMIT;
-        """)
-        return  # table already has jobs_total from the CREATE above
-
-    # Table structure is fine — just add jobs_total if missing
-    if "jobs_total" not in col_map:
-        conn.execute("ALTER TABLE scheduler_run ADD COLUMN jobs_total INTEGER")
-        conn.commit()
-
-
-def sweep_orphan_runs(conn: sqlite3.Connection) -> None:
-    """Mark stale scheduler_run rows from a previous crashed process as error/cancelled.
-
-    Call once at process startup — before any new work is queued.
+    Call once at process startup, before any new work is queued.
     """
-    now = _now_iso()
-    # scheduler_run: running rows → error, queued rows → cancelled
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn.execute(
         """
         UPDATE scheduler_run
-           SET status = 'error',
+           SET status      = 'error',
                finished_at = COALESCE(finished_at, ?),
-               error = COALESCE(error, 'process did not finish cleanly')
+               error       = COALESCE(error, 'process did not finish cleanly')
          WHERE status = 'running'
         """,
         (now,),
@@ -281,9 +329,8 @@ def sweep_orphan_runs(conn: sqlite3.Connection) -> None:
         """
         UPDATE scheduler_run
            SET status = 'cancelled',
-               error = 'server restarted before run started'
+               error  = 'server restarted before run started'
          WHERE status = 'queued'
-        """,
+        """
     )
-
-
+    conn.commit()

@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ..db import connect, init_schema, sweep_orphan_runs, sync_fields_full
+from ..db import close_pool, connect, init_schema, sweep_orphan_runs, sync_fields_full
 from ..scheduler import build_scheduler, start_queue_worker
 from .deps import CONFIG_PATH, get_config
 from .routes import jobs, runs, schedule, sources, analyse
@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI):
         _scheduler.shutdown(wait=False)
     from ..scheduler import _run_queue
     _run_queue.put(None)   # signal the queue worker to exit cleanly
+    close_pool()
 
 
 app = FastAPI(title="JobBoard", lifespan=lifespan)

@@ -1,11 +1,10 @@
-"""Analyse service — job fetching and prompt building for AI scoring."""
+﻿"""Analyse service â€” job fetching and prompt building for AI scoring."""
 from __future__ import annotations
 
 import json
 import logging
 import random
 import re
-import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -64,7 +63,7 @@ JOB_PROMPT = (
     "Job listing:\n{job_info}\n\n"
     "---\n\n"
     "Score this job against the candidate's CV on each criterion below:\n{fields_spec}\n\n"
-    "Respond with ONLY valid JSON — no markdown, no explanation, no extra text:\n{json_example}"
+    "Respond with ONLY valid JSON â€” no markdown, no explanation, no extra text:\n{json_example}"
 )
 
 
@@ -92,7 +91,7 @@ def _build_job_info(job: dict[str, Any], allowed_fields: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _pick_preview_job(conn: sqlite3.Connection) -> dict[str, Any] | None:
+def _pick_preview_job(conn: object) -> dict[str, Any] | None:
     """Return one random non-dismissed job, strongly preferring enriched ones.
 
     Queries the DB directly so recency ordering doesn't hide the enriched pool.
@@ -118,7 +117,7 @@ def _pick_preview_job(conn: sqlite3.Connection) -> dict[str, Any] | None:
 
 
 def build_preview_prompts(
-    conn: sqlite3.Connection,
+    conn: object,
     system_prompt: str,
     cv: str,
     field_defs: list[dict[str, Any]],
@@ -160,7 +159,7 @@ def _derive_label(name: str) -> str:
     return name.replace("_", " ").title()
 
 
-def get_field_defs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def get_field_defs(conn: object) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT id, name, type, description, sort_order "
         "FROM field_def ORDER BY sort_order, id"
@@ -173,7 +172,7 @@ def get_field_defs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return result
 
 
-def save_field_defs(conn: sqlite3.Connection, fields: list[dict[str, Any]]) -> list[str]:
+def save_field_defs(conn: object, fields: list[dict[str, Any]]) -> list[str]:
     """Full sync submitted fields into SQLite and return list of deleted field names."""
     for f in fields:
         if not _FIELD_NAME_RE.match(f["name"]):
@@ -248,7 +247,7 @@ def save_ai_config(
 # ---------------------------------------------------------------------------
 
 def _already_scored_keys(
-    conn: sqlite3.Connection,
+    conn: object,
     field_names: list[str],
 ) -> set[tuple[str, str]]:
     """Return (source, job_id) pairs that already have all fields scored."""
@@ -270,7 +269,7 @@ def _already_scored_keys(
 
 
 def score_all_jobs(
-    conn: sqlite3.Connection,
+    conn: object,
     cfg: AiCfg,
     field_defs: list[dict[str, Any]],
     *,
@@ -288,10 +287,10 @@ def score_all_jobs(
 
     field_names = [f["name"] for f in field_defs]
     if not field_names:
-        raise ValueError("No scoring fields defined — add fields before scoring.")
+        raise ValueError("No scoring fields defined â€” add fields before scoring.")
 
     jobs = get_jobs_for_analysis(conn, max_jobs=999_999)
-    # Prefer enriched jobs but don't exclude bare ones — scoring may still work
+    # Prefer enriched jobs but don't exclude bare ones â€” scoring may still work
     # with just bullet_points/teaser for short job ads.
 
     if not rescore:
@@ -355,7 +354,7 @@ def score_all_jobs(
 # Job fetching
 # ---------------------------------------------------------------------------
 
-def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
+def get_score_job_counts(conn: object) -> dict[str, int]:
     """Return total non-dismissed jobs and how many haven't been scored yet."""
     total = 0
     scored = 0
@@ -378,7 +377,7 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return {"total": total, "new": total - scored}
 
 
-def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[str, Any]]:
+def get_jobs_for_analysis(conn: object, max_jobs: int) -> list[dict[str, Any]]:
     result = []
     for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
         rows = conn.execute(
@@ -403,7 +402,7 @@ def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[
 # ---------------------------------------------------------------------------
 
 def save_job_analysis(
-    conn: sqlite3.Connection,
+    conn: object,
     source: str,
     job_id: str,
     field_results: dict[str, Any],

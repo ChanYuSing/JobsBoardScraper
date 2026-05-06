@@ -1,7 +1,6 @@
-"""Runs service — queries against scheduler_run table."""
+﻿"""Runs service â€” queries against scheduler_run table."""
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
 from ...scheduler_db import purge_all_runs, delete_runs_by_ids  # re-export for routes
@@ -10,7 +9,7 @@ __all__ = ["list_runs", "distinct_sources", "purge_all_runs", "delete_runs_by_id
 
 
 def list_runs(
-    conn: sqlite3.Connection,
+    conn: object,
     *,
     source: str = "",
     status: str = "",
@@ -34,8 +33,9 @@ def list_runs(
         SELECT id, source, phase, started_at, finished_at,
                status, jobs_found, jobs_total, error,
                CASE WHEN started_at IS NULL THEN NULL
-                    ELSE ROUND((JULIANDAY(COALESCE(finished_at, DATETIME('now')))
-                                - JULIANDAY(started_at)) * 86400)
+                    ELSE ROUND(EXTRACT(EPOCH FROM (
+                                COALESCE(finished_at::timestamptz, NOW())
+                              - started_at::timestamptz)))
                END AS duration_sec
         FROM scheduler_run
         {clause}
@@ -47,7 +47,7 @@ def list_runs(
     return [dict(r) for r in rows]
 
 
-def distinct_sources(conn: sqlite3.Connection) -> list[str]:
+def distinct_sources(conn: object) -> list[str]:
     rows = conn.execute(
         "SELECT DISTINCT source FROM scheduler_run ORDER BY source"
     ).fetchall()
