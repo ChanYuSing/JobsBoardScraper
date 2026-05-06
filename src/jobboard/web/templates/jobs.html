@@ -407,12 +407,12 @@
     btn.setAttribute('aria-expanded','true');
     var rect = btn.getBoundingClientRect();
     var pw = 220;
-    var left = rect.left + window.scrollX;
+    var left = rect.left;
     if (left + pw > window.innerWidth - 12) left = window.innerWidth - pw - 12;
-    popup.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    popup.style.top  = (rect.bottom + 4) + 'px';
     popup.style.left = Math.max(8, left) + 'px';
     var first = popup.querySelector('input:not([type=checkbox]),select');
-    if (first) first.focus();
+    if (first) first.focus({ preventScroll: true });
   }
   document.querySelectorAll('.th-filter-btn[data-popup]').forEach(function(btn) {
     btn.addEventListener('click', function(e) {
@@ -427,7 +427,7 @@
   document.addEventListener('click', function(e) {
     if (!e.target.closest('.col-filter__popup') && !e.target.closest('.th-filter-btn')) closeAll();
   });
-  document.addEventListener('scroll', closeAll, true);
+  window.addEventListener('scroll', closeAll);
 
   /* ── sort-only column header buttons ── */
   document.querySelectorAll('.th-filter-btn[data-sort-col]').forEach(function(btn) {
@@ -630,8 +630,6 @@
     });
     chipRow.addEventListener('drop', function(e) { e.preventDefault(); });
   })();
-
-})();
 
 })();
 </script>

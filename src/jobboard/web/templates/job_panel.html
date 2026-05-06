@@ -23,11 +23,11 @@
   <aside class="jpanel__meta">
     <dl class="jpanel__dl">
       {% for label, value, raw_utc in [
-        ("Location",       job.location),
-        ("Salary",         job.salary),
-        ("Work type",      job.work_type),
-        ("Classification", job.classification),
-        ("Subcat.",        job.subclassification),
+        ("Location",       job.location,       None),
+        ("Salary",         job.salary,         None),
+        ("Work type",      job.work_type,      None),
+        ("Classification", job.classification, None),
+        ("Subcat.",        job.subclassification, None),
         ("Date posted",    job.date_posted[:10] if job.date_posted else None,     None),
         ("First seen",     job.first_seen_at[:10] if job.first_seen_at else None, job.first_seen_at),
       ] %}

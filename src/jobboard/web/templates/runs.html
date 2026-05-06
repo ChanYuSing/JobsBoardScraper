@@ -32,11 +32,11 @@
       <td id="jobs-{{ r.id }}">
         {%- if r.jobs_found is not none -%}
           {%- if r.phase == 'enrich' and r.jobs_total is not none -%}
-            {{ r.jobs_found }} / {{ r.jobs_total }}
+            {%- if r.jobs_found > 0 -%}<a href="/jobs?run_id={{ r.id }}">{{ r.jobs_found }}</a>{%- else -%}0{%- endif -%} / {{ r.jobs_total }}
           {%- elif r.phase == 'score' and r.jobs_total is not none -%}
-            {{ r.jobs_found }} / {{ r.jobs_total }}
+            {%- if r.jobs_found > 0 -%}<a href="/jobs?run_id={{ r.id }}">{{ r.jobs_found }}</a>{%- else -%}0{%- endif -%} / {{ r.jobs_total }}
           {%- else -%}
-            {{ r.jobs_found }}
+            {%- if r.jobs_found > 0 -%}<a href="/jobs?run_id={{ r.id }}">{{ r.jobs_found }}</a>{%- else -%}0{%- endif -%}
           {%- endif -%}
         {%- else -%}—{%- endif -%}
       </td>

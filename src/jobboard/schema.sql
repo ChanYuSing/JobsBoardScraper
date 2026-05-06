@@ -17,6 +17,15 @@ CREATE TABLE IF NOT EXISTS scheduler_run (
 CREATE INDEX IF NOT EXISTS idx_sched_run_source ON scheduler_run(source);
 CREATE INDEX IF NOT EXISTS idx_sched_run_status ON scheduler_run(status);
 
+-- One row per job touched by a scheduler run (fetch / enrich / score).
+CREATE TABLE IF NOT EXISTS scheduler_run_job (
+    run_id  INTEGER NOT NULL REFERENCES scheduler_run(id) ON DELETE CASCADE,
+    source  TEXT    NOT NULL,
+    job_id  TEXT    NOT NULL,
+    PRIMARY KEY (run_id, source, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_srj_run_id ON scheduler_run_job(run_id);
+
 -- User triage: saved / dismissed per job.
 CREATE TABLE IF NOT EXISTS job_status (
     source     TEXT NOT NULL,

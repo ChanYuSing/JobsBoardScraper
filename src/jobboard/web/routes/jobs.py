@@ -6,7 +6,7 @@ from datetime import date as _date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from ..deps import get_db, templates
 from ..services.analyse import get_field_defs
@@ -55,6 +55,7 @@ def jobs_page(
     col: list[str] = Query(default=[]),
     page: int = 1,
     page_size: int = 15,
+    run_id: int = 0,
     conn: sqlite3.Connection = Depends(get_db),
 ):
     page_size = max(1, min(page_size, 1000))
@@ -95,6 +96,7 @@ def jobs_page(
         page=page, page_size=page_size,
         score_field_names=score_int_keys,
         score_filters=score_filters or None,
+        run_id=run_id,
     )
     get_job_scores(conn, jobs, field_defs)
     total_pages = max(1, (total + page_size - 1) // page_size)
@@ -111,6 +113,7 @@ def jobs_page(
         triage=triage,
         sort_by=sort_by, sort_dir=sort_dir,
         cols=cols_param, page_size=str(page_size) if page_size != 15 else "",
+        run_id=str(run_id) if run_id else "",
     )
     active_filter_count = (
         sum(1 for k, v in scalar_fp.items() if v and k not in (
@@ -164,27 +167,11 @@ def jobs_page(
             "f_triage": triage,
             "f_sort_by": sort_by,
             "f_sort_dir": sort_dir,
+            "run_id": run_id,
             "sortable_cols": SORTABLE | score_int_keys,
             # pagination base query string
             "page_qs": page_qs,
         },
-    )
-
-
-@router.get("/jobs/{source}/{job_id}", response_class=HTMLResponse)
-def job_detail(
-    request: Request,
-    source: str,
-    job_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
-):
-    job = get_job(conn, source, job_id)
-    if job is None:
-        return HTMLResponse("Not found", status_code=404)
-    return templates.TemplateResponse(
-        request,
-        "job_detail.html",
-        {"active": "jobs", "job": job},
     )
 
 
@@ -221,56 +208,3 @@ async def mark_ajax(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"status": status})
-
-
-@router.post("/jobs/{source}/{job_id}/mark")
-async def mark(
-    source: str,
-    job_id: str,
-    request: Request,
-    conn: sqlite3.Connection = Depends(get_db),
-):
-    form_data = await request.form()
-    status               = str(form_data.get("status", "new"))
-    keyword              = str(form_data.get("keyword", ""))
-    filter_source        = str(form_data.get("filter_source", ""))
-    date_from            = str(form_data.get("date_from", ""))
-    date_to              = str(form_data.get("date_to", ""))
-    work_type            = list(form_data.getlist("work_type"))
-    company              = str(form_data.get("company", ""))
-    location_kw          = str(form_data.get("location_kw", ""))
-    classification       = str(form_data.get("classification", ""))
-    subclassification_kw = str(form_data.get("subclassification_kw", ""))
-    first_seen_from      = str(form_data.get("first_seen_from", ""))
-    first_seen_to        = str(form_data.get("first_seen_to", ""))
-    triage               = str(form_data.get("triage", ""))
-    sort_by              = str(form_data.get("sort_by", ""))
-    sort_dir             = str(form_data.get("sort_dir", "desc"))
-    cols                 = str(form_data.get("cols", ""))
-    page_s               = str(form_data.get("page", "1"))
-    page_size_s          = str(form_data.get("page_size", "15"))
-    try:
-        mark_job(conn, source, job_id, status)
-    except ValueError as exc:
-        return RedirectResponse(
-            f"/jobs?flash={str(exc)[:120]}&flash_type=error", status_code=303
-        )
-    scalar: dict[str, object] = {k: v for k, v in {
-        "keyword": keyword, "source": filter_source,
-        "date_from": date_from, "date_to": date_to,
-        "company": company,
-        "location_kw": location_kw, "classification": classification,
-        "subclassification_kw": subclassification_kw,
-        "first_seen_from": first_seen_from,
-        "first_seen_to": first_seen_to,
-        "triage": triage, "sort_by": sort_by, "sort_dir": sort_dir,
-        "cols": cols, "page": page_s,
-        "page_size": page_size_s if page_size_s != "15" else "",
-    }.items() if v}
-    if work_type:
-        scalar["work_type"] = work_type
-    for key, val in form_data.multi_items():
-        if key.startswith("score_min_") and val:
-            scalar[key] = val
-    params = urlencode(scalar, doseq=True)
-    return RedirectResponse(f"/jobs?{params}", status_code=303)

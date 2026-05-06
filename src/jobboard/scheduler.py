@@ -35,6 +35,7 @@ from .config import Config, load_config
 from .db import connect, init_schema
 from .scheduler_db import (
     log_run_finish,
+    log_run_job,
     log_run_queued,
     log_run_start,
     mark_run_active,
@@ -192,6 +193,7 @@ def _run_all(
                                     inserted += 1
                                 else:
                                     updated += 1
+                                log_run_job(conn, run_id, source, rec.job_id)
                             conn.commit()
                             update_run_jobs_found(conn, run_id, inserted + updated)
                     else:
@@ -206,6 +208,7 @@ def _run_all(
                                 inserted += 1
                             else:
                                 updated += 1
+                            log_run_job(conn, run_id, source, card.job_id)
                             conn.commit()
                             update_run_jobs_found(conn, run_id, inserted + updated)
 
@@ -285,6 +288,7 @@ def _run_all(
                             payload = adapter.fetch_detail(job_id)
                             detail = adapter.parse_detail(payload or {})
                             _write_detail(job_id, detail)
+                            log_run_job(conn, run_id, source, job_id)
                             ok += 1
                         except Exception as exc:
                             log.warning("[%s] detail error for %s: %s", source, job_id, exc)
@@ -389,6 +393,7 @@ def _run_score(task: ScoreTask) -> None:
             conn, cfg, field_defs,
             rescore=task.rescore,
             progress_cb=_progress,
+            run_id=run_id,
         )
         log_run_finish(conn, run_id, status="ok", jobs_found=scored)
         log.info("Score task done  scored=%d  errors=%d", scored, errors)

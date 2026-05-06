@@ -117,6 +117,19 @@ def cancel_run_by_id(conn: sqlite3.Connection, run_id: int) -> int:
     return cur.rowcount
 
 
+def log_run_job(
+    conn: sqlite3.Connection,
+    run_id: int,
+    source: str,
+    job_id: str,
+) -> None:
+    """Record that a job was touched by this run (INSERT OR IGNORE — idempotent)."""
+    conn.execute(
+        "INSERT OR IGNORE INTO scheduler_run_job (run_id, source, job_id) VALUES (?, ?, ?)",
+        (run_id, source, job_id),
+    )
+
+
 def purge_all_runs(conn: sqlite3.Connection) -> int:
     """Delete every run record that is not currently 'running'.
 

@@ -17,7 +17,7 @@ from .sources.jobsdb.adapter import (
 )
 from .config import Config, load_config
 from .db import connect, init_schema
-from .scheduler_db import log_run_finish, log_run_start, set_run_jobs_total, update_run_jobs_found
+from .scheduler_db import log_run_finish, log_run_job, log_run_start, set_run_jobs_total, update_run_jobs_found
 from .sources import KNOWN_SOURCES, build_adapter
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -147,6 +147,7 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                                 inserted += 1
                             else:
                                 updated += 1
+                            log_run_job(conn, run_id, source, rec.job_id)
                         conn.commit()
                         update_run_jobs_found(conn, run_id, inserted + updated)
                         last_page_done = page
@@ -169,6 +170,7 @@ def _run_one_fetch(conn: sqlite3.Connection, cfg: Config, source: str) -> int:
                             inserted += 1
                         else:
                             updated += 1
+                        log_run_job(conn, run_id, source, card.job_id)
                         conn.commit()
                         update_run_jobs_found(conn, run_id, inserted + updated)
                 conn.commit()
@@ -457,6 +459,7 @@ def _enrich_one(
                 payload = adapter.fetch_detail(job_id)
                 detail = adapter.parse_detail(payload or {})
                 _write_detail(job_id, detail)
+                log_run_job(conn, run_id, source, job_id)
                 ok += 1
             except CloudflareBlockedError as exc:
                 log.error("[%s] Cloudflare blocked at %s (%d/%d). Stopping.",

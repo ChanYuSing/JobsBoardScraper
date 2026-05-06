@@ -92,6 +92,7 @@ def list_jobs(
     page_size: int = 50,
     score_field_names: set[str] | None = None,
     score_filters: dict[str, int] | None = None,
+    run_id: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return (rows, total_count)."""
     where, params = [], []
@@ -148,20 +149,29 @@ def list_jobs(
 
     clause = "WHERE " + " AND ".join(where) if where else ""
 
+    run_join = (
+        "JOIN scheduler_run_job srj"
+        " ON srj.source = j.source AND srj.job_id = j.job_id AND srj.run_id = ?"
+        if run_id else ""
+    )
+    run_params: list = [run_id] if run_id else []
+
     sort_by_score = bool(sort_by and score_field_names and sort_by in score_field_names)
 
     count_base = f"""
         FROM job_all j
         LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
+        {run_join}
         {clause}
     """
-    total = conn.execute(f"SELECT COUNT(*) {count_base}", params).fetchone()[0]
+    total = conn.execute(f"SELECT COUNT(*) {count_base}", run_params + params).fetchone()[0]
 
     offset = (page - 1) * page_size
     if sort_by_score:
         data_base = f"""
             FROM job_all j
             LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id
+            {run_join}
             LEFT JOIN (
                 SELECT ja.source, ja.job_id, ja.value_int AS _score_sort
                 FROM job_analysis ja
@@ -171,7 +181,7 @@ def list_jobs(
             {clause}
         """
         order_clause = f"ss._score_sort {'ASC' if sort_dir == 'asc' else 'DESC'} NULLS LAST"
-        data_params = [sort_by] + params + [page_size, offset]
+        data_params = [sort_by] + run_params + params + [page_size, offset]
     else:
         data_base = count_base
         order_clause = (
@@ -179,7 +189,7 @@ def list_jobs(
             if sort_by in SORTABLE
             else "j.date_posted DESC, j.first_seen_at DESC"
         )
-        data_params = params + [page_size, offset]
+        data_params = run_params + params + [page_size, offset]
 
     rows = conn.execute(
         f"""

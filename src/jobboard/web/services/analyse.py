@@ -13,6 +13,7 @@ import httpx
 import yaml
 
 from ...config import AiCfg, FieldCfg, config_write_lock, load_config
+from ...scheduler_db import log_run_job
 from ...db import sync_fields_full
 from .ai_client import score_job
 
@@ -276,6 +277,7 @@ def score_all_jobs(
     *,
     rescore: bool = False,
     progress_cb: Any = None,
+    run_id: int | None = None,
 ) -> tuple[int, int]:
     """Score all non-dismissed enriched jobs.  Returns (scored, errors).
 
@@ -320,6 +322,8 @@ def score_all_jobs(
         try:
             result = score_job(cfg, system, user_msg)
             save_job_analysis(conn, job["source"], job["job_id"], result)
+            if run_id is not None:
+                log_run_job(conn, run_id, job["source"], job["job_id"])
             scored += 1
             consecutive_http_errors = 0
         except httpx.HTTPStatusError as exc:

@@ -60,7 +60,7 @@
     .th-filter-btn:disabled { cursor: default; opacity: 1; }
     .th-filter-btn--active { border-color: var(--pico-primary) !important; color: var(--pico-primary) !important; font-weight: 600; background: color-mix(in srgb, var(--pico-primary) 12%, transparent) !important; }
     /* sort button — small ↕/▲/▼ beside the label */
-    .col-filter__popup { position: absolute; z-index: 9999; min-width: 240px; max-width: 300px; background: var(--pico-card-background-color, #fff); border: 1px solid var(--pico-muted-border-color); border-radius: 8px; padding: 0.75rem; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+    .col-filter__popup { position: fixed; z-index: 9999; min-width: 240px; max-width: 300px; background: var(--pico-card-background-color, #fff); border: 1px solid var(--pico-muted-border-color); border-radius: 8px; padding: 0.75rem; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
     .col-filter__popup-title { margin: 0 0 0.45rem !important; font-size: 0.72rem; font-weight: 700; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.04em; }
     .col-filter__popup > input, .col-filter__popup > select { margin-bottom: 0 !important; font-size: 0.85rem; }
     /* checklist for multi-select (work type) */
