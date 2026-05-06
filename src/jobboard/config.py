@@ -96,7 +96,9 @@ class AiCfg(BaseModel):
     model: str = "llama3.2"
     base_url: str = ""           # empty = use provider default (ollama: http://localhost:11434/v1)
     api_key: str = ""            # fallback if AI_API_KEY env var not set
-    api_keys: dict[str, str] = Field(default_factory=dict)  # per-provider keys
+    api_keys: dict[str, str] = Field(default_factory=dict)   # per-provider keys
+    models: dict[str, str] = Field(default_factory=dict)     # per-provider last-used model
+    base_urls: dict[str, str] = Field(default_factory=dict)  # per-provider last-used base_url
     temperature: float = 0.2
     system_prompt: str = ""
     cv: str = ""

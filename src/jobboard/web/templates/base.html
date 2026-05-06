@@ -253,7 +253,7 @@
       <li><strong>JobBoard</strong></li>
     </ul>
     <ul>
-      <li><a href="/jobs"     class="{% if active=='jobs'     %}active{% endif %}">Jobs</a></li>
+      <li><a href="/jobs" id="nav-jobs" class="{% if active=='jobs'     %}active{% endif %}">Jobs</a></li>
       <li><a href="/sources"  class="{% if active=='sources'  %}active{% endif %}">Sources</a></li>
       <li><a href="/schedule" class="{% if active=='schedule' %}active{% endif %}">Schedule</a></li>
       <li><a href="/runs"     class="{% if active=='runs'     %}active{% endif %}">Runs</a></li>
@@ -283,7 +283,16 @@
         }
       });
     }
-    document.addEventListener('DOMContentLoaded', function() { convertUtcTimestamps(); });
+    document.addEventListener('DOMContentLoaded', function() {
+      convertUtcTimestamps();
+      // Persist jobs page URL (filters + columns) across navigation
+      var jobsLink = document.getElementById('nav-jobs');
+      if (window.location.pathname === '/jobs') {
+        sessionStorage.setItem('jobs_url', window.location.pathname + window.location.search);
+      }
+      var saved = sessionStorage.getItem('jobs_url');
+      if (jobsLink && saved) { jobsLink.href = saved; }
+    });
   </script>
 </body>
 </html>

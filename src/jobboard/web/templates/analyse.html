@@ -179,7 +179,9 @@
 
 // ── Provider settings ─────────────────────────────────────────────────────
 
-const API_KEYS = {{ api_keys | tojson }};
+const API_KEYS    = {{ api_keys | tojson }};
+const SAVED_MODELS    = {{ saved_models | tojson }};
+const SAVED_BASE_URLS = {{ saved_base_urls | tojson }};
 
 const PROVIDER_DEFAULTS = {
   openai:        { model: 'gpt-4o-mini',                  baseUrl: '',                          needsKey: true,  showBase: false },
@@ -195,22 +197,16 @@ const PROVIDER_DEFAULTS = {
 function onProviderChange() {
   const provider  = document.getElementById('ai-provider').value;
   const def       = PROVIDER_DEFAULTS[provider] || {};
-  const allBases  = Object.values(PROVIDER_DEFAULTS).map(d => d.baseUrl);
-  const allModels = Object.values(PROVIDER_DEFAULTS).map(d => d.model);
 
   const modelInput = document.getElementById('ai-model');
-  if (!modelInput.value || allModels.includes(modelInput.value)) {
-    modelInput.value = def.model || '';
-  }
+  modelInput.value = SAVED_MODELS[provider] ?? def.model ?? '';
 
   const baseInput = document.getElementById('ai-baseurl');
   const baseLabel = document.getElementById('ai-baseurl-label');
   const baseHint  = document.getElementById('ai-baseurl-hint');
   if (def.showBase) {
     baseLabel.style.display = '';
-    if (!baseInput.value || allBases.includes(baseInput.value)) {
-      baseInput.value = def.baseUrl;
-    }
+    baseInput.value = SAVED_BASE_URLS[provider] ?? def.baseUrl ?? '';
     baseHint.textContent = def.baseUrl ? 'Default: ' + def.baseUrl : 'Required — paste your endpoint URL.';
   } else {
     baseLabel.style.display = 'none';

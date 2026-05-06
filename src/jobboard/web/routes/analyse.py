@@ -82,6 +82,8 @@ def analyse_page(
             "active": "analyse",
             "ai": ai,
             "api_keys": ai.get("api_keys", {}),
+            "saved_models": ai.get("models", {}),
+            "saved_base_urls": ai.get("base_urls", {}),
             "field_defs": field_defs,
             "flash": flash,
             "flash_type": flash_type,

@@ -199,8 +199,8 @@ def get_ai_config(config_path: str) -> dict[str, Any]:
         "model":         cfg.ai.model,
         "base_url":      cfg.ai.base_url,
         "api_key":       cfg.ai.api_key,
-        "api_keys":      dict(cfg.ai.api_keys),
-        "temperature":   cfg.ai.temperature,
+        "api_keys":      dict(cfg.ai.api_keys),        "models":        dict(cfg.ai.models),
+        "base_urls":     dict(cfg.ai.base_urls),        "temperature":   cfg.ai.temperature,
         "system_prompt": cfg.ai.system_prompt,
         "cv":            cfg.ai.cv,
         "fields":        [{"name": f.name, "type": f.type, "description": f.description} for f in cfg.ai.fields],
@@ -233,6 +233,11 @@ def save_ai_config(
             _prov = raw["ai"].get("provider")
             if _prov:
                 raw["ai"].setdefault("api_keys", {})[_prov] = api_key
+        # save per-provider model and base_url
+        _prov2 = raw["ai"].get("provider")
+        if _prov2:
+            if model    is not None: raw["ai"].setdefault("models",    {})[_prov2] = model
+            if base_url is not None: raw["ai"].setdefault("base_urls", {})[_prov2] = base_url
         if temperature   is not None: raw["ai"]["temperature"]   = temperature
         if system_prompt is not None: raw["ai"]["system_prompt"] = system_prompt
         if cv            is not None: raw["ai"]["cv"]             = cv

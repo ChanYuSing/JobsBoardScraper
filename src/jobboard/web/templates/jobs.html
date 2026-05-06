@@ -30,6 +30,7 @@
 
 {# ══ COLUMN PICKER ══ #}
 <form method="get" action="/jobs" class="col-picker-form">
+  {% if run_id %}<input type="hidden" name="run_id" value="{{ run_id }}"/>{% endif %}
   <input type="hidden" name="keyword"        value="{{ f_keyword }}"/>
   <input type="hidden" name="company"        value="{{ f_company }}"/>
   <input type="hidden" name="location_kw"    value="{{ f_location_kw }}"/>
@@ -74,6 +75,7 @@
 
 {# ══ MAIN FORM (table + popups) ══ #}
 <form method="get" action="/jobs" id="filter-form">
+  {% if run_id %}<input type="hidden" name="run_id" value="{{ run_id }}"/>{% endif %}
   <input type="hidden" name="cols"     value="{{ cols_param }}"/>
   <input type="hidden" name="sort_by"  value="{{ f_sort_by }}"  id="hid-sort-by"/>
   <input type="hidden" name="sort_dir" value="{{ f_sort_dir }}" id="hid-sort-dir"/>
