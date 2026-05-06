@@ -239,7 +239,7 @@ def list_jobs(
             {clause}
         """
         order_clause = f"ss._score_sort {'ASC' if sort_dir == 'asc' else 'DESC'} NULLS LAST"
-        data_params = [sort_by] + run_params + params + [page_size, offset]
+        data_params = run_params + [sort_by] + params + [page_size, offset]
     else:
         data_base = count_base
         order_clause = (

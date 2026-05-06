@@ -9,8 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..deps import CONFIG_PATH, get_db, templates
 from ..services.schedule import (
     DAY_NAMES, get_schedule, get_scraper, get_ai_auto_score,
-    get_ai_score_preset_names,
-    save_schedule, save_scraper, save_ai_score_settings, toggle_schedule_enabled,
+    get_ai_score_preset_names, save_schedule, save_scraper,
+    save_ai_score_settings, toggle_schedule_enabled,
 )
 
 router = APIRouter()
@@ -154,14 +154,6 @@ def kill_run():
         "/schedule?flash=Kill+signal+sent.+Run+will+stop+at+the+next+checkpoint.",
         status_code=303,
     )
-
-
-@router.post("/schedule/ai-save")
-async def ai_save(request: Request):
-    form = await request.form()
-    auto_score = form.get("auto_score") == "1"
-    save_ai_auto_score(CONFIG_PATH, auto_score)
-    return RedirectResponse("/schedule?flash=AI+settings+saved", status_code=303)
 
 
 @router.post("/schedule/save-all")

@@ -284,6 +284,7 @@ def score_all_jobs(
     progress_cb: Any = None,
     run_id: int | None = None,
     filter_params: dict | list[dict] | None = None,
+    cancel_event: Any = None,   # threading.Event — checked between jobs
 ) -> tuple[int, int]:
     """Score non-dismissed enriched jobs.  Returns (scored, errors).
 
@@ -333,6 +334,9 @@ def score_all_jobs(
     allowed_fields = cfg.prompt_fields or DEFAULT_PROMPT_FIELDS
 
     for i, job in enumerate(jobs):
+        if cancel_event is not None and cancel_event.is_set():
+            log.info("Score cancelled after %d/%d jobs.", i, total)
+            break
         user_msg = (
             JOB_PROMPT
             .replace("{cv}", cv or "[CV not provided]")

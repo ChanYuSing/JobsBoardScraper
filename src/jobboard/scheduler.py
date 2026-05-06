@@ -420,6 +420,7 @@ def _run_score(task: ScoreTask) -> None:
             progress_cb=_progress,
             run_id=run_id,
             filter_params=task.preset_params,
+            cancel_event=_cancel_event,
         )
         log_run_finish(conn, run_id, status="ok", jobs_found=scored)
         log.info("Score task done  scored=%d  errors=%d", scored, errors)
