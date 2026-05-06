@@ -15,7 +15,7 @@
 <table>
   <thead>
     <tr>
-      <th>ID</th><th>Source</th><th>Phase</th><th>Started</th>
+      <th>ID</th><th>Source</th><th>Phase</th><th>Scope</th><th>Started</th>
       <th>Duration</th><th>Status</th><th>Jobs</th><th>Error</th>
       <th class="runs-del-col"></th>
     </tr>
@@ -26,6 +26,7 @@
       <td>{{ r.id }}</td>
       <td>{{ src_label.get(r.source, r.source) }}</td>
       <td>{{ r.phase }}</td>
+      <td class="runs-scope-cell">{{ r.scope or "" }}</td>
       <td>{% if r.started_at %}<time data-utc="{{ r.started_at }}" data-fmt="datetime">{{ r.started_at[:16] }}</time>{% else %}—{% endif %}</td>
       <td id="dur-{{ r.id }}"{% if r.status == 'running' and r.started_at %} data-started="{{ r.started_at }}"{% endif %}>{% if r.duration_sec is not none %}{{ r.duration_sec | int }}s{% else %}—{% endif %}</td>
       <td><span class="badge badge-{{ r.status }}" id="sts-{{ r.id }}">{{ r.status }}</span></td>

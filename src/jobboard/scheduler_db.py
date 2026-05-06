@@ -9,21 +9,21 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def log_run_start(conn: sqlite3.Connection, source: str, phase: str) -> int:
+def log_run_start(conn: sqlite3.Connection, source: str, phase: str, scope: str | None = None) -> int:
     """Insert an in-progress scheduler_run row; return its id."""
     cur = conn.execute(
-        "INSERT INTO scheduler_run (source, phase, started_at, status) VALUES (?, ?, ?, 'running')",
-        (source, phase, _now_iso()),
+        "INSERT INTO scheduler_run (source, phase, started_at, status, scope) VALUES (?, ?, ?, 'running', ?)",
+        (source, phase, _now_iso(), scope),
     )
     conn.commit()
     return int(cur.lastrowid)
 
 
-def log_run_queued(conn: sqlite3.Connection, source: str, phase: str) -> int:
+def log_run_queued(conn: sqlite3.Connection, source: str, phase: str, scope: str | None = None) -> int:
     """Insert a queued scheduler_run row (not yet started); return its id."""
     cur = conn.execute(
-        "INSERT INTO scheduler_run (source, phase, status) VALUES (?, ?, 'queued')",
-        (source, phase),
+        "INSERT INTO scheduler_run (source, phase, status, scope) VALUES (?, ?, 'queued', ?)",
+        (source, phase, scope),
     )
     conn.commit()
     return int(cur.lastrowid)

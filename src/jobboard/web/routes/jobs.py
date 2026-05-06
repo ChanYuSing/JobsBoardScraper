@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ..deps import get_db, templates
 from ..services.analyse import get_field_defs
+from ..services.filter_presets import extract_params, list_presets
 from ..services.jobs import (
     ALL_DISPLAY_COLS, DEFAULT_COLS, SORTABLE, get_filter_options, get_job,
     get_job_scores, list_jobs, mark_job,
@@ -102,6 +103,17 @@ def jobs_page(
     total_pages = max(1, (total + page_size - 1) // page_size)
     filter_options = get_filter_options(conn)
 
+    # Presets: load all and detect which (if any) matches current filters
+    presets = list_presets(conn)
+    current_params = extract_params(request.query_params, score_int_keys)
+    active_preset_id: int | None = None
+    active_preset_name: str | None = None
+    for _p in presets:
+        if _p["params"] == current_params:
+            active_preset_id   = _p["id"]
+            active_preset_name = _p["name"]
+            break
+
     # build base filter params dict (without page) for pagination links
     scalar_fp = dict(
         keyword=keyword, source=source, date_from=date_from, date_to=date_to,
@@ -171,6 +183,11 @@ def jobs_page(
             "sortable_cols": SORTABLE | score_int_keys,
             # pagination base query string
             "page_qs": page_qs,
+            # presets
+            "presets": presets,
+            "active_preset_id": active_preset_id,
+            "active_preset_name": active_preset_name,
+            "current_filter_params": current_params,
         },
     )
 

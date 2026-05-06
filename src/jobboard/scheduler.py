@@ -69,6 +69,9 @@ class ScoreTask:
     rescore: bool
     progress_cb: Any | None = None   # callable(done, total, errors) or None
     done_event: threading.Event = dataclasses.field(default_factory=threading.Event)
+    run_id: int | None = None        # pre-allocated scheduler_run.id (queued)
+    preset_name: str | None = None   # scope label for the Runs page
+    preset_params: dict | list[dict] | None = None  # filter scope (single or union of presets)
 
 
 _QueueItem = RunTask | ScoreTask
@@ -357,15 +360,29 @@ def enqueue_score(
     db_path: str,
     rescore: bool = False,
     progress_cb: Any = None,
+    preset_name: str | None = None,
+    preset_params: dict | list[dict] | None = None,
 ) -> ScoreTask:
     """Push a ScoreTask onto the shared run queue.  Returns the task object
     so callers can wait on task.done_event.
 
     The task will start after any in-progress run/score task finishes.
+    Pre-inserts a 'queued' scheduler_run row so the task is immediately
+    visible on the Runs page.
     """
-    task = ScoreTask(config_path, db_path, rescore, progress_cb)
+    conn = connect(db_path)
+    try:
+        queued_run_id = log_run_queued(conn, "ai", "score", scope=preset_name)
+    finally:
+        conn.close()
+    task = ScoreTask(
+        config_path, db_path, rescore, progress_cb,
+        run_id=queued_run_id,
+        preset_name=preset_name,
+        preset_params=preset_params,
+    )
     _run_queue.put(task)
-    log.info("Score task enqueued  rescore=%s", rescore)
+    log.info("Score task enqueued  rescore=%s  run_id=%d  scope=%s", rescore, queued_run_id, preset_name)
     return task
 
 
@@ -373,7 +390,15 @@ def _run_score(task: ScoreTask) -> None:
     """Worker body for a ScoreTask."""
     from .web.services.analyse import get_field_defs, score_all_jobs
     conn = connect(task.db_path)
-    run_id = log_run_start(conn, "ai", "score")
+    if task.run_id is not None:
+        if not mark_run_active(conn, task.run_id):
+            log.info("Score task run_id=%d was cancelled before it started.", task.run_id)
+            conn.close()
+            task.done_event.set()
+            return
+        run_id = task.run_id
+    else:
+        run_id = log_run_start(conn, "ai", "score")
     try:
         cfg        = load_config(task.config_path).ai
         field_defs = get_field_defs(conn)
@@ -394,6 +419,7 @@ def _run_score(task: ScoreTask) -> None:
             rescore=task.rescore,
             progress_cb=_progress,
             run_id=run_id,
+            filter_params=task.preset_params,
         )
         log_run_finish(conn, run_id, status="ok", jobs_found=scored)
         log.info("Score task done  scored=%d  errors=%d", scored, errors)
@@ -422,8 +448,24 @@ def _schedule_enqueue(sources: list[str], config_path: str, db_path: str) -> Non
     log.info("Scheduled run enqueued: sources=%s", sources)
     cfg = load_config(config_path)
     if cfg.ai.auto_score:
-        enqueue_score(config_path, db_path, rescore=False)
-        log.info("Auto-score enqueued after scheduled run")
+        preset_names = cfg.ai.auto_score_preset_names
+        if preset_names:
+            conn = connect(db_path)
+            try:
+                from .web.services.filter_presets import get_preset_by_name
+                for pname in preset_names:
+                    preset = get_preset_by_name(conn, pname)
+                    enqueue_score(
+                        config_path, db_path, rescore=False,
+                        preset_name=pname,
+                        preset_params=preset["params"] if preset else None,
+                    )
+                    log.info("Auto-score enqueued for preset '%s'", pname)
+            finally:
+                conn.close()
+        else:
+            enqueue_score(config_path, db_path, rescore=False)
+            log.info("Auto-score enqueued after scheduled run")
 
 
 # ---------------------------------------------------------------------------

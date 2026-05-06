@@ -1,13 +1,16 @@
 """Schedule routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+import sqlite3
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..deps import CONFIG_PATH, templates
+from ..deps import CONFIG_PATH, get_db, templates
 from ..services.schedule import (
     DAY_NAMES, get_schedule, get_scraper, get_ai_auto_score,
-    save_schedule, save_scraper, save_ai_auto_score, toggle_schedule_enabled,
+    get_ai_score_preset_names,
+    save_schedule, save_scraper, save_ai_score_settings, toggle_schedule_enabled,
 )
 
 router = APIRouter()
@@ -18,11 +21,15 @@ def schedule_page(
     request: Request,
     flash: str = "",
     flash_type: str = "",
+    conn: sqlite3.Connection = Depends(get_db),
 ):
     from ...scheduler import _run_active
+    from ..services.filter_presets import list_presets
     sched = get_schedule(CONFIG_PATH)
     scraper = get_scraper(CONFIG_PATH)
     auto_score = get_ai_auto_score(CONFIG_PATH)
+    auto_score_preset_names = get_ai_score_preset_names(CONFIG_PATH)
+    presets = list_presets(conn)
     return templates.TemplateResponse(
         request,
         "schedule.html",
@@ -32,6 +39,8 @@ def schedule_page(
             "day_names": DAY_NAMES,
             "scraper": scraper,
             "auto_score": auto_score,
+            "auto_score_preset_names": auto_score_preset_names,
+            "presets": presets,
             "running": _run_active.is_set(),
             "flash": flash,
             "flash_type": flash_type,
@@ -173,7 +182,11 @@ async def save_all(request: Request):
             jitter_max=int(form.get("jitter_ms_max", 3000)),
             user_agent=str(form.get("user_agent", "")),
         )
-        save_ai_auto_score(CONFIG_PATH, form.get("auto_score") == "1")
+        save_ai_score_settings(
+            CONFIG_PATH,
+            auto_score=form.get("auto_score") == "1",
+            preset_names=list(form.getlist("auto_score_preset_name")),
+        )
         # Apply new cron to the live APScheduler job immediately (no restart needed).
         scheduler = getattr(request.app.state, "scheduler", None)
         if scheduler is not None:

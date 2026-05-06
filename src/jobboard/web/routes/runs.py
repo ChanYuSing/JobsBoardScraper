@@ -101,6 +101,7 @@ def progress_stream():
         idle_ticks = 0
         while True:
             time.sleep(2)
+            rows = []
             try:
                 conn = db_connect(cfg.storage.sqlite_path)
                 try:
@@ -124,7 +125,7 @@ def progress_stream():
             except Exception:
                 pass
 
-            if _run_active.is_set() or not _run_queue.empty():
+            if _run_active.is_set() or not _run_queue.empty() or rows:
                 idle_ticks = 0
             else:
                 idle_ticks += 1

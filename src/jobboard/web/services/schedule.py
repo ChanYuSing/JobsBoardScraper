@@ -126,11 +126,17 @@ def get_ai_auto_score(config_path: str) -> bool:
     return load_config(config_path).ai.auto_score
 
 
-def save_ai_auto_score(config_path: str, auto_score: bool) -> None:
+def get_ai_score_preset_names(config_path: str) -> list[str]:
+    return list(load_config(config_path).ai.auto_score_preset_names)
+
+
+def save_ai_score_settings(config_path: str, auto_score: bool, preset_names: list[str]) -> None:
+    """Save auto_score toggle and the list of preset names to score automatically."""
     with config_write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
         raw.setdefault("ai", {})
         raw["ai"]["auto_score"] = auto_score
+        raw["ai"]["auto_score_preset_names"] = preset_names
         with open(config_path, "w", encoding="utf-8") as fh:
             yaml.dump(raw, fh, allow_unicode=True, sort_keys=False, default_flow_style=False)

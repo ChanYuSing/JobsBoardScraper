@@ -22,6 +22,7 @@ from ..services.analyse import (
     score_all_jobs,
 )
 from ..services.ai_client import score_job
+from ..services.filter_presets import get_preset, list_presets
 
 router = APIRouter()
 
@@ -75,6 +76,7 @@ def analyse_page(
     ai = get_ai_config(CONFIG_PATH)
     field_defs = get_field_defs(conn)
     job_counts = get_score_job_counts(conn)
+    presets = list_presets(conn)
     return templates.TemplateResponse(
         request,
         "analyse.html",
@@ -90,6 +92,7 @@ def analyse_page(
             "all_prompt_fields": ALL_PROMPT_FIELDS,
             "job_counts": job_counts,
             "providers": _PROVIDERS,
+            "presets": presets,
         },
     )
 
@@ -177,6 +180,23 @@ async def analyse_score(
     form = await request.form()
     rescore = form.get("rescore") == "1"
 
+    # Resolve optional preset scope (multi-select)
+    preset_name: str | None = None
+    preset_params: list[dict] | None = None
+    preset_id_list = [v for v in form.getlist("preset_id") if v]
+    if preset_id_list:
+        selected_presets = []
+        for pid_raw in preset_id_list:
+            try:
+                preset = get_preset(conn, int(pid_raw))
+                if preset:
+                    selected_presets.append(preset)
+            except (ValueError, Exception):
+                pass
+        if selected_presets:
+            preset_name   = ", ".join(p["name"] for p in selected_presets)
+            preset_params = [p["params"] for p in selected_presets]
+
     field_defs = get_field_defs(conn)
     if not field_defs:
         return JSONResponse({"error": "No scoring fields defined."}, status_code=400)
@@ -198,7 +218,13 @@ async def analyse_score(
             _score_state["total"]  = total
             _score_state["errors"] = errors
 
-    task = enqueue_score(CONFIG_PATH, cfg.storage.sqlite_path, rescore=rescore, progress_cb=_progress)
+    task = enqueue_score(
+        CONFIG_PATH, cfg.storage.sqlite_path,
+        rescore=rescore,
+        progress_cb=_progress,
+        preset_name=preset_name,
+        preset_params=preset_params,
+    )
 
     def _finish_watcher() -> None:
         task.done_event.wait()

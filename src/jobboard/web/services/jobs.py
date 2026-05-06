@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from datetime import datetime, timezone
 from typing import Any
 
 # Ordered display columns (label → normalised name)
@@ -71,6 +72,101 @@ SORTABLE: set[str] = {
 }
 
 
+def build_jobs_filter(params: dict) -> tuple[list[str], list]:
+    """Translate a filter params dict into (WHERE clauses, bind params).
+
+    Table aliases assumed: ``j`` for job_all, ``js`` for job_status.
+    Keys: keyword, source, date_from, date_to, work_type (list or str),
+    company, location_kw, classification, subclassification_kw,
+    first_seen_from, first_seen_to, triage, score_min_<fieldname>.
+    """
+    where: list[str] = []
+    bind: list = []
+
+    source = params.get("source", "")
+    if source:
+        where.append("j.source = ?")
+        bind.append(source)
+
+    date_from = params.get("date_from", "")
+    if date_from:
+        where.append("j.date_posted >= ?")
+        bind.append(date_from)
+
+    date_to = params.get("date_to", "")
+    if date_to:
+        where.append("j.date_posted <= ?")
+        bind.append(date_to)
+
+    work_type = params.get("work_type", [])
+    if isinstance(work_type, str):
+        work_type = [w for w in work_type.split(",") if w]
+    if work_type:
+        clauses = " OR ".join("LOWER(j.work_type) LIKE ?" for _ in work_type)
+        where.append(f"({clauses})")
+        bind.extend(f"%{wt.lower()}%" for wt in work_type)
+
+    company = params.get("company", "")
+    if company:
+        where.append("LOWER(j.company) LIKE ?")
+        bind.append(f"%{company.lower()}%")
+
+    location_kw = params.get("location_kw", "")
+    if location_kw:
+        where.append("LOWER(j.location) LIKE ?")
+        bind.append(f"%{location_kw.lower()}%")
+
+    classification = params.get("classification", "")
+    if classification:
+        where.append("LOWER(COALESCE(j.classification,'')) LIKE ?")
+        bind.append(f"%{classification.lower()}%")
+
+    subclassification_kw = params.get("subclassification_kw", "")
+    if subclassification_kw:
+        where.append("LOWER(COALESCE(j.subclassification,'')) LIKE ?")
+        bind.append(f"%{subclassification_kw.lower()}%")
+
+    first_seen_from = params.get("first_seen_from", "")
+    if first_seen_from:
+        where.append("date(j.first_seen_at) >= ?")
+        bind.append(first_seen_from)
+
+    first_seen_to = params.get("first_seen_to", "")
+    if first_seen_to:
+        where.append("date(j.first_seen_at) <= ?")
+        bind.append(first_seen_to)
+
+    keyword = params.get("keyword", "")
+    if keyword:
+        where.append("LOWER(j.title) LIKE ?")
+        bind.append(f"%{keyword.lower()}%")
+
+    triage = params.get("triage", "")
+    if triage == "saved":
+        where.append("js.status = 'saved'")
+    elif triage == "dismissed":
+        where.append("js.status = 'dismissed'")
+    elif triage == "new":
+        where.append("js.status IS NULL")
+
+    for key, val in params.items():
+        if key.startswith("score_min_"):
+            fname = key[len("score_min_"):]
+            try:
+                min_val = int(val)
+            except (TypeError, ValueError):
+                continue
+            where.append(
+                "EXISTS (SELECT 1 FROM job_analysis ja"
+                " JOIN field_def fd ON fd.id = ja.field_id"
+                " WHERE ja.source = j.source AND ja.job_id = j.job_id"
+                " AND fd.name = ? AND ja.value_int >= ?)"
+            )
+            bind.extend([fname, min_val])
+
+    return where, bind
+
+
 def list_jobs(
     conn: sqlite3.Connection,
     *,
@@ -95,57 +191,19 @@ def list_jobs(
     run_id: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return (rows, total_count)."""
-    where, params = [], []
-
-    if source:
-        where.append("j.source = ?")
-        params.append(source)
-    if date_from:
-        where.append("j.date_posted >= ?")
-        params.append(date_from)
-    if date_to:
-        where.append("j.date_posted <= ?")
-        params.append(date_to)
-    if work_type:
-        clauses = " OR ".join("LOWER(j.work_type) LIKE ?" for _ in work_type)
-        where.append(f"({clauses})")
-        params.extend(f"%{wt.lower()}%" for wt in work_type)
-    if company:
-        where.append("LOWER(j.company) LIKE ?")
-        params.append(f"%{company.lower()}%")
-    if location_kw:
-        where.append("LOWER(j.location) LIKE ?")
-        params.append(f"%{location_kw.lower()}%")
-    if classification:
-        where.append("LOWER(COALESCE(j.classification,'')) LIKE ?")
-        params.append(f"%{classification.lower()}%")
-    if subclassification_kw:
-        where.append("LOWER(COALESCE(j.subclassification,'')) LIKE ?")
-        params.append(f"%{subclassification_kw.lower()}%")
-    if first_seen_from:
-        where.append("date(j.first_seen_at) >= ?")
-        params.append(first_seen_from)
-    if first_seen_to:
-        where.append("date(j.first_seen_at) <= ?")
-        params.append(first_seen_to)
-    if keyword:
-        where.append("LOWER(j.title) LIKE ?")
-        params.append(f"%{keyword.lower()}%")
-    if triage == "saved":
-        where.append("js.status = 'saved'")
-    elif triage == "dismissed":
-        where.append("js.status = 'dismissed'")
-    elif triage == "new":
-        where.append("js.status IS NULL")
-    if score_filters:
-        for fname, min_val in score_filters.items():
-            where.append(
-                "EXISTS (SELECT 1 FROM job_analysis ja"
-                " JOIN field_def fd ON fd.id = ja.field_id"
-                " WHERE ja.source = j.source AND ja.job_id = j.job_id"
-                " AND fd.name = ? AND ja.value_int >= ?)"
-            )
-            params.extend([fname, min_val])
+    filter_dict: dict = {
+        "keyword": keyword, "source": source,
+        "date_from": date_from, "date_to": date_to,
+        "work_type": work_type or [],
+        "company": company, "location_kw": location_kw,
+        "classification": classification,
+        "subclassification_kw": subclassification_kw,
+        "first_seen_from": first_seen_from,
+        "first_seen_to": first_seen_to,
+        "triage": triage,
+        **{f"score_min_{k}": v for k, v in (score_filters or {}).items()},
+    }
+    where, params = build_jobs_filter(filter_dict)
 
     clause = "WHERE " + " AND ".join(where) if where else ""
 

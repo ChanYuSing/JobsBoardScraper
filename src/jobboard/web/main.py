@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from ..db import connect, init_schema, sweep_orphan_runs, sync_fields_full
 from ..scheduler import build_scheduler, start_queue_worker
 from .deps import CONFIG_PATH, get_config
-from .routes import jobs, runs, schedule, sources, analyse
+from .routes import jobs, runs, schedule, sources, analyse, presets
 
 _scheduler = None
 
@@ -47,3 +47,4 @@ app.include_router(sources.router)
 app.include_router(schedule.router)
 app.include_router(runs.router)
 app.include_router(analyse.router)
+app.include_router(presets.router)

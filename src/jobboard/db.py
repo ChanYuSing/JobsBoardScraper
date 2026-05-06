@@ -42,6 +42,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     _migrate_analysis_schema(conn)
     _migrate_scheduler_run(conn)
     _migrate_drop_run_refs(conn)
+    _migrate_scope_column(conn)
     conn.executescript(_SCHEMA_SQL)
     from .sources.linkedin import db as li_db
     li_db.init_schema(conn)
@@ -243,7 +244,8 @@ def _migrate_scheduler_run(conn: sqlite3.Connection) -> None:
                 status       TEXT    NOT NULL,
                 jobs_found   INTEGER,
                 jobs_total   INTEGER,
-                error        TEXT
+                error        TEXT,
+                scope        TEXT
             );
             INSERT INTO scheduler_run
                 (id, source, phase, started_at, finished_at, status, jobs_found, error)
@@ -257,6 +259,14 @@ def _migrate_scheduler_run(conn: sqlite3.Connection) -> None:
     # Table structure is fine — just add jobs_total if missing
     if "jobs_total" not in col_map:
         conn.execute("ALTER TABLE scheduler_run ADD COLUMN jobs_total INTEGER")
+        conn.commit()
+
+
+def _migrate_scope_column(conn: sqlite3.Connection) -> None:
+    """Add scope column to scheduler_run if it doesn't exist yet."""
+    col_map = {r[1] for r in conn.execute("PRAGMA table_info(scheduler_run)").fetchall()}
+    if "scope" not in col_map:
+        conn.execute("ALTER TABLE scheduler_run ADD COLUMN scope TEXT")
         conn.commit()
 
 

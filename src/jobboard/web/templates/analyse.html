@@ -129,6 +129,19 @@
     Runs the AI against every non-dismissed job using the saved settings above.
     Score new jobs only, or re-run everything.
   </p>
+  {% if presets %}
+  <div class="analyse-scope" style="margin-bottom:1rem">
+    <p style="margin:0 0 .35rem"><strong>Scope</strong> <small class="source-hint">(none = all non-dismissed jobs)</small></p>
+    <div class="chip-row" style="flex-wrap:wrap; gap:.4rem">
+      {% for p in presets %}
+      <span class="chip-item">
+        <input type="checkbox" class="score-scope-cb" id="scope_{{ p.id }}" name="scope_preset" value="{{ p.id }}"/>
+        <label for="scope_{{ p.id }}">{{ p.name }}</label>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
   <div class="analyse-actions">
     <button id="score-btn"   onclick="scoreAll(false)">Score new jobs</button>
     <button id="rescore-btn" onclick="scoreAll(true)" class="outline secondary">Re-score all</button>
@@ -360,6 +373,9 @@ async function scoreAll(rescore) {
   try {
     const fd = new FormData();
     if (rescore) fd.set('rescore', '1');
+    document.querySelectorAll('.score-scope-cb:checked').forEach(function(cb) {
+      fd.append('preset_id', cb.value);
+    });
     const r = await fetch('/analyse/score', { method: 'POST', body: fd });
     if (r.status === 409) {
       txt.textContent = 'Already running — check progress below.';

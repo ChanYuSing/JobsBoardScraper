@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS scheduler_run (
     status       TEXT    NOT NULL,          -- queued | running | ok | error | cancelled
     jobs_found   INTEGER,                   -- progress counter (inserted+updated for fetch; ok count for enrich)
     jobs_total   INTEGER,                   -- total to process (NULL for fetch; set at enrich start)
-    error        TEXT                       -- NULL on success
+    error        TEXT,                      -- NULL on success
+    scope        TEXT                       -- optional label (e.g. preset name for AI score runs)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sched_run_source ON scheduler_run(source);
@@ -89,3 +90,12 @@ CREATE INDEX IF NOT EXISTS idx_job_all_location         ON job_all(location);
 CREATE INDEX IF NOT EXISTS idx_job_all_work_type        ON job_all(work_type);
 CREATE INDEX IF NOT EXISTS idx_job_all_classification   ON job_all(classification);
 CREATE INDEX IF NOT EXISTS idx_job_all_subclassification ON job_all(subclassification);
+
+-- Named filter presets: saved filter configurations for Jobs page and AI scoring scope.
+CREATE TABLE IF NOT EXISTS filter_preset (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL UNIQUE,
+    params     TEXT NOT NULL,              -- JSON object of all filter params
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);

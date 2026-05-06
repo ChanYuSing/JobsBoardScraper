@@ -283,13 +283,15 @@ def score_all_jobs(
     rescore: bool = False,
     progress_cb: Any = None,
     run_id: int | None = None,
+    filter_params: dict | list[dict] | None = None,
 ) -> tuple[int, int]:
-    """Score all non-dismissed enriched jobs.  Returns (scored, errors).
+    """Score non-dismissed enriched jobs.  Returns (scored, errors).
 
     Args:
-        rescore:     When True, re-score jobs that already have all fields stored.
-        progress_cb: Optional callable(done: int, total: int, errors: int) called
-                     after every job attempt.
+        rescore:       When True, re-score jobs that already have all fields stored.
+        progress_cb:   Optional callable(done: int, total: int, errors: int).
+        filter_params: Restrict scoring scope. A single params dict, or a list of dicts
+                       whose matching jobs are unioned together.
     """
     log = logging.getLogger(__name__)
 
@@ -298,8 +300,22 @@ def score_all_jobs(
         raise ValueError("No scoring fields defined — add fields before scoring.")
 
     jobs = get_jobs_for_analysis(conn, max_jobs=999_999)
-    # Prefer enriched jobs but don't exclude bare ones — scoring may still work
-    # with just bullet_points/teaser for short job ads.
+
+    if filter_params:
+        from .jobs import build_jobs_filter
+        params_list = filter_params if isinstance(filter_params, list) else [filter_params]
+        scope_keys: set[tuple[str, str]] = set()
+        for fp in params_list:
+            f_where, f_bind = build_jobs_filter(fp)
+            f_clause = ("WHERE " + " AND ".join(f_where)) if f_where else ""
+            rows = conn.execute(
+                f"SELECT j.source, j.job_id FROM job_all j"
+                f" LEFT JOIN job_status js ON js.source = j.source AND js.job_id = j.job_id"
+                f" {f_clause}",
+                f_bind,
+            ).fetchall()
+            scope_keys.update((r[0], r[1]) for r in rows)
+        jobs = [j for j in jobs if (j["source"], j["job_id"]) in scope_keys]
 
     if not rescore:
         scored_keys = _already_scored_keys(conn, field_names)
@@ -312,15 +328,15 @@ def score_all_jobs(
     errors  = 0
     consecutive_http_errors = 0
 
-    system  = cfg.system_prompt
-    cv      = cfg.cv
-    allowed = cfg.prompt_fields or DEFAULT_PROMPT_FIELDS
+    system        = cfg.system_prompt
+    cv            = cfg.cv
+    allowed_fields = cfg.prompt_fields or DEFAULT_PROMPT_FIELDS
 
     for i, job in enumerate(jobs):
         user_msg = (
             JOB_PROMPT
             .replace("{cv}", cv or "[CV not provided]")
-            .replace("{job_info}", _build_job_info(job, allowed))
+            .replace("{job_info}", _build_job_info(job, allowed_fields))
             .replace("{fields_spec}", build_fields_spec(field_defs))
             .replace("{json_example}", build_json_example(field_defs))
         )

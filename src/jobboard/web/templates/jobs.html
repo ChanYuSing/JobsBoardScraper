@@ -62,6 +62,27 @@
   </div>
 </form>
 
+{# ══ PRESET BAR ══ #}
+<div class="preset-bar">
+  {% for p in presets %}
+  <a href="/jobs?{{ p.qs }}" class="preset-bar__chip{% if p.id == active_preset_id %} preset-bar__chip--active{% endif %}">{{ p.name }}</a><button type="button" class="preset-bar__chip-del" data-preset-id="{{ p.id }}" title="Delete preset">✕</button>
+  {% endfor %}
+  <button type="button" class="outline secondary preset-bar__save-btn" id="preset-save-btn">
+    {% if active_preset_id %}Update "{{ active_preset_name }}"{% else %}⭐ Save filters…{% endif %}
+  </button>
+</div>
+{# save-preset dialog #}
+<dialog id="preset-save-dialog">
+  <article>
+    <header><strong>Save filter preset</strong></header>
+    <label>Name<input type="text" id="preset-name-input" placeholder="e.g. Python Senior" autocomplete="off"/></label>
+    <footer>
+      <button class="secondary outline" onclick="document.getElementById('preset-save-dialog').close()">Cancel</button>
+      <button id="preset-save-confirm-btn" onclick="savePreset()">Save</button>
+    </footer>
+  </article>
+</dialog>
+
 {# ══ STATUS BAR ══ #}
 <div class="status-bar">
   <span class="status-bar__count">
@@ -633,6 +654,48 @@
     chipRow.addEventListener('drop', function(e) { e.preventDefault(); });
   })();
 
+})();
+</script>
+
+{# ── Preset management (own script — not inside filter IIFE) ── #}
+<script>
+(function() {
+  var CURRENT_PARAMS = {{ current_filter_params | tojson }};
+
+  document.querySelectorAll('.preset-bar__chip-del').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.preventDefault();
+      if (!confirm('Delete this preset?')) return;
+      var id = btn.dataset.presetId;
+      await fetch('/presets/' + id + '/delete', {method: 'POST'});
+      window.location.reload();
+    });
+  });
+
+  function openPresetSave() {
+    var dlg = document.getElementById('preset-save-dialog');
+    var inp = document.getElementById('preset-name-input');
+    if (!dlg || !inp) return;
+    inp.value = {{ active_preset_name | tojson }} || '';
+    dlg.showModal();
+    setTimeout(function() { inp.focus(); inp.select(); }, 50);
+  }
+
+  window.savePreset = async function() {
+    var name = document.getElementById('preset-name-input').value.trim();
+    if (!name) { document.getElementById('preset-name-input').focus(); return; }
+    var fd = new FormData();
+    fd.set('name', name);
+    fd.set('params', JSON.stringify(CURRENT_PARAMS));
+    var r = await fetch('/presets', {method: 'POST', body: fd});
+    var data = await r.json();
+    if (data.error) { alert(data.error); return; }
+    document.getElementById('preset-save-dialog').close();
+    window.location.reload();
+  };
+
+  var saveBtn = document.getElementById('preset-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', openPresetSave);
 })();
 </script>
 {% endblock %}
