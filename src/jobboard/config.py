@@ -99,7 +99,11 @@ class AiCfg(BaseModel):
     api_keys: dict[str, str] = Field(default_factory=dict)   # per-provider keys
     models: dict[str, str] = Field(default_factory=dict)     # per-provider last-used model
     base_urls: dict[str, str] = Field(default_factory=dict)  # per-provider last-used base_url
-    temperature: float = 0.2
+    temperature: float | None = None       # None = provider default
+    max_tokens: int | None = None          # None = provider default
+    reasoning_effort: str | None = None   # None | "low" | "medium" | "high" | "max"
+    thinking_enabled: bool | None = None  # None = provider default; True/False = force on/off
+    provider_params: dict[str, dict] = Field(default_factory=dict)  # per-provider param overrides
     system_prompt: str = ""
     cv: str = ""
     auto_score: bool = False

@@ -39,6 +39,24 @@ _DEFAULT_MODELS: dict[str, str] = {
 # Providers that need no auth (empty key is fine)
 _NO_AUTH_PROVIDERS = {"ollama", "lmstudio"}
 
+# Providers that use a non-standard key name for max output tokens
+_MAX_TOKENS_KEY: dict[str, str] = {
+    "grok": "max_completion_tokens",
+}
+
+# Supported parameters per provider — single source of truth for both
+# payload building and the UI. Add a new param here and it flows everywhere.
+PROVIDER_PARAMS: dict[str, tuple[str, ...]] = {
+    "openai":        ("temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "reasoning_effort"),
+    "grok":          ("temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed"),
+    "gemini":        ("temperature", "max_tokens", "top_p"),
+    "deepseek":      ("temperature", "max_tokens", "top_p", "reasoning_effort", "thinking_enabled"),
+    "anthropic":     ("temperature", "max_tokens", "top_p"),
+    "ollama":        ("temperature", "max_tokens", "top_p"),
+    "lmstudio":      ("temperature", "max_tokens", "top_p"),
+    "openai_compat": ("temperature", "max_tokens", "top_p", "frequency_penalty", "presence_penalty", "seed", "reasoning_effort", "thinking_enabled"),
+}
+
 # Timeout for AI calls — models can be slow
 _TIMEOUT = 120
 
@@ -56,6 +74,35 @@ def score_job(cfg: AiCfg, system: str, user: str) -> dict[str, Any]:
     if cfg.provider == "anthropic":
         return _score_anthropic(cfg, system, user)
     return _score_openai_compat(cfg, system, user)
+
+
+def _resolve_params(cfg: AiCfg) -> dict[str, Any]:
+    """Return effective params for the current provider.
+
+    Per-provider provider_params[provider] is the primary source. Falls back to
+    AiCfg top-level fields (temperature, max_tokens, reasoning_effort, thinking_enabled),
+    all of which default to None — meaning the param is omitted from the API payload
+    unless explicitly saved. Supported keys: temperature, max_tokens, top_p,
+    frequency_penalty, presence_penalty, seed, reasoning_effort, thinking_enabled.
+    """
+    # Structural defaults from AiCfg (only used when provider has no saved params)
+    defaults: dict[str, Any] = {
+        "temperature":       cfg.temperature,
+        "max_tokens":        cfg.max_tokens,
+        "top_p":             None,
+        "frequency_penalty": None,
+        "presence_penalty":  None,
+        "seed":              None,
+        "reasoning_effort":  cfg.reasoning_effort,
+        "thinking_enabled":  cfg.thinking_enabled,
+    }
+    # Per-provider saved params take precedence; ignore empty/None values
+    saved = cfg.provider_params.get(cfg.provider, {})
+    result = dict(defaults)
+    for k, v in saved.items():
+        if k in result and v is not None and v != "":
+            result[k] = v
+    return result
 
 
 def _score_openai_compat(cfg: AiCfg, system: str, user: str) -> dict[str, Any]:
@@ -84,14 +131,29 @@ def _score_openai_compat(cfg: AiCfg, system: str, user: str) -> dict[str, Any]:
             "set AI_API_KEY env var or api_key in AI settings."
         )
 
-    payload = {
+    params = _resolve_params(cfg)
+    supported = set(PROVIDER_PARAMS.get(cfg.provider, params.keys()))
+
+    payload: dict[str, Any] = {
         "model": model,
-        "temperature": cfg.temperature,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
     }
+    # Standard params — same key name in the API
+    for key in ("temperature", "top_p", "frequency_penalty", "presence_penalty", "seed", "reasoning_effort"):
+        if key in supported and params[key] is not None:
+            payload[key] = params[key]
+    # max_tokens — key name varies by provider
+    if "max_tokens" in supported and params["max_tokens"] is not None:
+        payload[_MAX_TOKENS_KEY.get(cfg.provider, "max_tokens")] = params["max_tokens"]
+    # thinking — special structure; must be explicit for providers that default to thinking-on
+    if "thinking_enabled" in supported:
+        if params["thinking_enabled"] is True:
+            payload["thinking"] = {"type": "enabled"}
+        elif params["thinking_enabled"] is False:
+            payload["thinking"] = {"type": "disabled"}
 
     with httpx.Client(timeout=_TIMEOUT) as client:
         resp = client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
@@ -120,13 +182,17 @@ def _score_anthropic(cfg: AiCfg, system: str, user: str) -> dict[str, Any]:
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
     }
-    payload = {
+    params = _resolve_params(cfg)
+    supported = set(PROVIDER_PARAMS.get("anthropic", ()))
+    payload: dict[str, Any] = {
         "model": model,
-        "max_tokens": 8192,
-        "temperature": cfg.temperature,
+        "max_tokens": params["max_tokens"] or 8192,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
+    for key in ("temperature", "top_p"):
+        if key in supported and params[key] is not None:
+            payload[key] = params[key]
 
     with httpx.Client(timeout=_TIMEOUT) as client:
         resp = client.post(f"{base_url}/v1/messages", headers=headers, json=payload)

@@ -65,18 +65,35 @@ def log_run_finish(
     jobs_found: int | None = None,
     error: str | None = None,
 ) -> None:
-    """Close out a scheduler_run row."""
-    conn.execute(
-        """
-        UPDATE scheduler_run
-           SET finished_at = ?,
-               status      = ?,
-               jobs_found  = ?,
-               error       = ?
-         WHERE id = ?
-        """,
-        (_now_iso(), status, jobs_found, error, run_id),
-    )
+    """Close out a scheduler_run row.
+
+    If jobs_found is None, the existing value is preserved (e.g. progress
+    counter written by update_run_jobs_found during the run stays intact
+    even when the run ends with an error).
+    """
+    if jobs_found is None:
+        conn.execute(
+            """
+            UPDATE scheduler_run
+               SET finished_at = ?,
+                   status      = ?,
+                   error       = ?
+             WHERE id = ?
+            """,
+            (_now_iso(), status, error, run_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE scheduler_run
+               SET finished_at = ?,
+                   status      = ?,
+                   jobs_found  = ?,
+                   error       = ?
+             WHERE id = ?
+            """,
+            (_now_iso(), status, jobs_found, error, run_id),
+        )
     conn.commit()
 
 

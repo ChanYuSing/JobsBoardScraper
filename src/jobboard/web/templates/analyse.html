@@ -98,15 +98,93 @@
       </label>
     </div>
 
-    <div class="ai-settings-narrow" style="margin-top:1rem">
-      <label>
-        Temperature
-        <input type="number" name="temperature" id="ai-temperature"
-               value="{{ ai.temperature }}"
-               min="0" max="2" step="0.1"
-               style="max-width:8rem"/>
-        <small class="source-hint">0.0–2.0. Lower = more deterministic scores. Recommended: 0.1–0.3.</small>
-      </label>
+    <div class="ai-settings-grid" id="ai-params-grid" style="margin-top:1rem">
+
+      <div id="param-row-temperature">
+        <label>
+          Temperature
+          {% set _temp = ai.provider_params.get(ai.provider, {}).get('temperature') %}
+          <input type="number" name="temperature" id="ai-temperature"
+                 value="{{ '' if _temp is none else _temp }}"
+                 min="0" max="2" step="0.1"/>
+          <small class="source-hint">0.0–2.0. Lower = more deterministic.</small>
+        </label>
+      </div>
+
+      <div id="param-row-max_tokens">
+        <label>
+          Max tokens
+          {% set _max_tokens = ai.provider_params.get(ai.provider, {}).get('max_tokens') %}
+          <input type="number" name="max_tokens" id="ai-max-tokens"
+                 value="{{ '' if _max_tokens is none else _max_tokens }}"
+                 min="1" step="1" placeholder="provider default"/>
+          <small class="source-hint">Max output tokens. Leave empty for provider default.</small>
+        </label>
+      </div>
+
+      <div id="param-row-top_p">
+        <label>
+          Top P
+          <input type="number" name="top_p" id="ai-top-p"
+                 value="{{ ai.provider_params.get(ai.provider, {}).get('top_p') or '' }}"
+                 min="0" max="1" step="0.01" placeholder="provider default"/>
+          <small class="source-hint">Nucleus sampling (alternative to temperature).</small>
+        </label>
+      </div>
+
+      <div id="param-row-frequency_penalty">
+        <label>
+          Frequency penalty
+          <input type="number" name="frequency_penalty" id="ai-frequency-penalty"
+                 value="{{ ai.provider_params.get(ai.provider, {}).get('frequency_penalty') or '' }}"
+                 min="-2" max="2" step="0.01" placeholder="0"/>
+          <small class="source-hint">−2 to 2. Positive = less repetition.</small>
+        </label>
+      </div>
+
+      <div id="param-row-presence_penalty">
+        <label>
+          Presence penalty
+          <input type="number" name="presence_penalty" id="ai-presence-penalty"
+                 value="{{ ai.provider_params.get(ai.provider, {}).get('presence_penalty') or '' }}"
+                 min="-2" max="2" step="0.01" placeholder="0"/>
+          <small class="source-hint">−2 to 2. Positive = more topic variety.</small>
+        </label>
+      </div>
+
+      <div id="param-row-seed">
+        <label>
+          Seed
+          <input type="number" name="seed" id="ai-seed"
+                 value="{{ ai.provider_params.get(ai.provider, {}).get('seed') or '' }}"
+                 min="0" step="1" placeholder="random"/>
+          <small class="source-hint">Integer for deterministic output (best-effort).</small>
+        </label>
+      </div>
+
+      <div id="param-row-reasoning_effort">
+        <label>
+          Reasoning effort
+          <select name="reasoning_effort" id="ai-reasoning-effort">
+            <option value="">— default (high) —</option>
+            <option value="high">high</option>
+            <option value="max">max</option>
+          </select>
+          <small class="source-hint">Reasoning depth. <strong>max</strong> = slower but more thorough.</small>
+        </label>
+      </div>
+
+      <div id="param-row-thinking_enabled">
+        <label>
+          Thinking mode
+          <select name="thinking_enabled" id="ai-thinking-enabled">
+            <option value="">— off (default) —</option>
+            <option value="true">enabled</option>
+          </select>
+          <small class="source-hint">Send <code>thinking: {type: "enabled"}</code>. Leave off for default behaviour.</small>
+        </label>
+      </div>
+
     </div>
   </article>
 
@@ -192,9 +270,12 @@
 
 // ── Provider settings ─────────────────────────────────────────────────────
 
-const API_KEYS    = {{ api_keys | tojson }};
-const SAVED_MODELS    = {{ saved_models | tojson }};
-const SAVED_BASE_URLS = {{ saved_base_urls | tojson }};
+const API_KEYS        = {{ ai.api_keys | tojson }};
+const SAVED_MODELS    = {{ ai.models | tojson }};
+const SAVED_BASE_URLS = {{ ai.base_urls | tojson }};
+const PROVIDER_PARAMS       = {{ ai.provider_params | tojson }};
+const PROVIDER_PARAM_SUPPORT = {{ ai.provider_param_support | tojson }};
+const ALL_PARAMS = [...new Set(Object.values(PROVIDER_PARAM_SUPPORT).flat())];
 
 const PROVIDER_DEFAULTS = {
   openai:        { model: 'gpt-4o-mini',                  baseUrl: '',                          needsKey: true,  showBase: false },
@@ -238,6 +319,26 @@ function onProviderChange() {
     keyInput.disabled = true;
     keyInput.value = '';
   }
+
+  // Show only params supported by this provider
+  const supported = PROVIDER_PARAM_SUPPORT[provider] || ALL_PARAMS;
+  ALL_PARAMS.forEach(p => {
+    const row = document.getElementById('param-row-' + p);
+    if (row) row.style.display = supported.includes(p) ? '' : 'none';
+  });
+
+  // Restore saved per-provider param values
+  const pp = PROVIDER_PARAMS[provider] || {};
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val === null || val === undefined) ? '' : val; };
+  const setSel = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val === null || val === undefined) ? '' : String(val); };
+  setVal('ai-temperature',       pp.temperature);
+  setVal('ai-max-tokens',         pp.max_tokens);
+  setVal('ai-top-p',              pp.top_p);
+  setVal('ai-frequency-penalty',  pp.frequency_penalty);
+  setVal('ai-presence-penalty',   pp.presence_penalty);
+  setVal('ai-seed',               pp.seed);
+  setSel('ai-reasoning-effort',   pp.reasoning_effort);
+  setSel('ai-thinking-enabled',   pp.thinking_enabled);
 }
 
 onProviderChange();

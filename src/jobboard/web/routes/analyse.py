@@ -43,14 +43,21 @@ _score_state: dict[str, Any] = {
 def _form_ai(form) -> dict:
     """Extract all AI settings from a form submission."""
     return {
-        "provider":      str(form.get("provider",     "")),
-        "model":         str(form.get("model",        "")),
-        "base_url":      str(form.get("base_url",     "")),
-        "api_key":       str(form.get("api_key",      "")),
-        "temperature":   form.get("temperature",      ""),
-        "system_prompt": str(form.get("system_prompt", "")),
-        "cv":            str(form.get("cv",           "")),
-        "prompt_fields": list(form.getlist("prompt_fields[]")),
+        "provider":         str(form.get("provider",         "")),
+        "model":            str(form.get("model",            "")),
+        "base_url":         str(form.get("base_url",         "")),
+        "api_key":          str(form.get("api_key",          "")),
+        "temperature":      form.get("temperature",         ""),
+        "max_tokens":       form.get("max_tokens",          ""),
+        "top_p":            form.get("top_p",               ""),
+        "frequency_penalty": form.get("frequency_penalty",  ""),
+        "presence_penalty":  form.get("presence_penalty",   ""),
+        "seed":              form.get("seed",               ""),
+        "reasoning_effort": str(form.get("reasoning_effort", "")),
+        "thinking_enabled": form.get("thinking_enabled",    ""),
+        "system_prompt":    str(form.get("system_prompt",   "")),
+        "cv":               str(form.get("cv",              "")),
+        "prompt_fields":    list(form.getlist("prompt_fields[]")),
     }
 
 
@@ -64,6 +71,14 @@ def _form_field_defs(form) -> list[dict]:
         for n, t, d in zip(names, types, descs)
         if n.strip()
     ]
+
+
+def _num(val: str, cast):
+    """Parse a form string to a number, returning None when blank or invalid."""
+    try:
+        return cast(val) if val else None
+    except (ValueError, TypeError):
+        return None
 
 
 @router.get("/analyse", response_class=HTMLResponse)
@@ -83,9 +98,6 @@ def analyse_page(
         {
             "active": "analyse",
             "ai": ai,
-            "api_keys": ai.get("api_keys", {}),
-            "saved_models": ai.get("models", {}),
-            "saved_base_urls": ai.get("base_urls", {}),
             "field_defs": field_defs,
             "flash": flash,
             "flash_type": flash_type,
@@ -128,10 +140,18 @@ async def analyse_save(
                         "fields": scored,
                     })
             save_field_defs(conn, fields)
-        try:
-            temp = float(form_ai["temperature"]) if form_ai["temperature"] != "" else None
-        except ValueError:
-            temp = None
+        thinking_raw = form_ai["thinking_enabled"]
+        provider_key = form_ai["provider"] or None
+        provider_params = {provider_key: {
+            "temperature":       _num(form_ai["temperature"], float),
+            "max_tokens":        _num(form_ai["max_tokens"], int),
+            "top_p":             _num(form_ai["top_p"], float),
+            "frequency_penalty": _num(form_ai["frequency_penalty"], float),
+            "presence_penalty":  _num(form_ai["presence_penalty"], float),
+            "seed":              _num(form_ai["seed"], int),
+            "reasoning_effort":  form_ai["reasoning_effort"] or None,
+            "thinking_enabled":  True if thinking_raw == "true" else (False if thinking_raw == "false" else None),
+        }} if provider_key else None
         save_ai_config(
             CONFIG_PATH,
             system_prompt=form_ai["system_prompt"],
@@ -139,9 +159,9 @@ async def analyse_save(
             fields=fields or None,
             provider=form_ai["provider"] or None,
             model=form_ai["model"] or None,
-            base_url=form_ai["base_url"],  # always save (empty string clears old URL)
+            base_url=form_ai["base_url"],
             api_key=form_ai["api_key"] if form_ai["api_key"] != "" else None,
-            temperature=temp,
+            provider_params=provider_params,
             prompt_fields=form_ai["prompt_fields"] or None,
         )
         return JSONResponse({"ok": True})

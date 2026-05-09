@@ -9,13 +9,12 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 import yaml
 
 from ...config import AiCfg, FieldCfg, config_write_lock, load_config
 from ...scheduler_db import log_run_job
 from ...db import sync_fields_full
-from .ai_client import score_job
+from .ai_client import score_job, PROVIDER_PARAMS
 
 _write_lock = config_write_lock
 
@@ -195,16 +194,19 @@ def save_field_defs(conn: sqlite3.Connection, fields: list[dict[str, Any]]) -> l
 def get_ai_config(config_path: str) -> dict[str, Any]:
     cfg = load_config(config_path)
     return {
-        "provider":      cfg.ai.provider,
-        "model":         cfg.ai.model,
-        "base_url":      cfg.ai.base_url,
-        "api_key":       cfg.ai.api_key,
-        "api_keys":      dict(cfg.ai.api_keys),        "models":        dict(cfg.ai.models),
-        "base_urls":     dict(cfg.ai.base_urls),        "temperature":   cfg.ai.temperature,
-        "system_prompt": cfg.ai.system_prompt,
-        "cv":            cfg.ai.cv,
-        "fields":        [{"name": f.name, "type": f.type, "description": f.description} for f in cfg.ai.fields],
-        "prompt_fields": cfg.ai.prompt_fields or DEFAULT_PROMPT_FIELDS,
+        "provider":              cfg.ai.provider,
+        "model":                 cfg.ai.model,
+        "base_url":              cfg.ai.base_url,
+        "api_key":               cfg.ai.api_key,
+        "api_keys":              dict(cfg.ai.api_keys),
+        "models":                dict(cfg.ai.models),
+        "base_urls":             dict(cfg.ai.base_urls),
+        "provider_params":       dict(cfg.ai.provider_params),
+        "provider_param_support": {p: list(keys) for p, keys in PROVIDER_PARAMS.items()},
+        "system_prompt":         cfg.ai.system_prompt,
+        "cv":                    cfg.ai.cv,
+        "fields":                [{"name": f.name, "type": f.type, "description": f.description} for f in cfg.ai.fields],
+        "prompt_fields":         cfg.ai.prompt_fields or DEFAULT_PROMPT_FIELDS,
     }
 
 
@@ -217,31 +219,31 @@ def save_ai_config(
     model: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
-    temperature: float | None = None,
+    provider_params: dict | None = None,   # {provider: {temperature, max_tokens, ...}}
     prompt_fields: list[str] | None = None,
 ) -> None:
     with _write_lock:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
         raw.setdefault("ai", {})
-        if provider      is not None: raw["ai"]["provider"]      = provider
-        if model         is not None: raw["ai"]["model"]         = model
-        if base_url      is not None: raw["ai"]["base_url"]      = base_url  # "" clears old URL
-        if api_key       is not None:
+        if provider  is not None: raw["ai"]["provider"] = provider
+        if model     is not None: raw["ai"]["model"]    = model
+        if base_url  is not None: raw["ai"]["base_url"] = base_url
+        if api_key is not None:
             raw["ai"]["api_key"] = api_key
-            # also store per-provider so switching providers doesn't leak keys
             _prov = raw["ai"].get("provider")
             if _prov:
                 raw["ai"].setdefault("api_keys", {})[_prov] = api_key
-        # save per-provider model and base_url
         _prov2 = raw["ai"].get("provider")
         if _prov2:
             if model    is not None: raw["ai"].setdefault("models",    {})[_prov2] = model
             if base_url is not None: raw["ai"].setdefault("base_urls", {})[_prov2] = base_url
-        if temperature   is not None: raw["ai"]["temperature"]   = temperature
+        # Per-provider params are the single runtime store — never write to global fields
+        if provider_params is not None:
+            raw["ai"].setdefault("provider_params", {}).update(provider_params)
         if system_prompt is not None: raw["ai"]["system_prompt"] = system_prompt
-        if cv            is not None: raw["ai"]["cv"]             = cv
-        if fields        is not None:
+        if cv            is not None: raw["ai"]["cv"]            = cv
+        if fields is not None:
             raw["ai"]["fields"] = [{"name": f["name"], "type": f["type"], "description": f["description"]} for f in fields]
         if prompt_fields is not None:
             raw["ai"]["prompt_fields"] = prompt_fields
@@ -322,12 +324,12 @@ def score_all_jobs(
         scored_keys = _already_scored_keys(conn, field_names)
         jobs = [j for j in jobs if (j["source"], j["job_id"]) not in scored_keys]
 
-    _MAX_CONSECUTIVE_HTTP_ERRORS = 10
+    _MAX_CONSECUTIVE_ERRORS = 10
 
     total   = len(jobs)
     scored  = 0
     errors  = 0
-    consecutive_http_errors = 0
+    consecutive_errors = 0
 
     system        = cfg.system_prompt
     cv            = cfg.cv
@@ -350,26 +352,23 @@ def score_all_jobs(
             if run_id is not None:
                 log_run_job(conn, run_id, job["source"], job["job_id"])
             scored += 1
-            consecutive_http_errors = 0
-        except httpx.HTTPStatusError as exc:
+            consecutive_errors = 0
+        except Exception as exc:
             errors += 1
-            consecutive_http_errors += 1
+            consecutive_errors += 1
             log.warning(
-                "Score failed [%s/%s]: HTTP %d (%d/%d consecutive)",
-                job["source"], job["job_id"], exc.response.status_code,
-                consecutive_http_errors, _MAX_CONSECUTIVE_HTTP_ERRORS,
+                "Score failed [%s/%s]: %s (%d/%d consecutive)",
+                job["source"], job["job_id"], exc,
+                consecutive_errors, _MAX_CONSECUTIVE_ERRORS,
             )
-            if consecutive_http_errors >= _MAX_CONSECUTIVE_HTTP_ERRORS:
-                log.error("Aborting batch after %d consecutive HTTP errors.", consecutive_http_errors)
+            if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                log.error("Aborting score after %d consecutive errors.", consecutive_errors)
                 if progress_cb is not None:
                     try:
                         progress_cb(i + 1, total, errors)
                     except Exception:
                         pass
                 raise
-        except Exception as exc:
-            log.warning("Score failed [%s/%s]: %s", job["source"], job["job_id"], exc)
-            errors += 1
 
         if progress_cb is not None:
             try:
@@ -385,7 +384,14 @@ def score_all_jobs(
 # ---------------------------------------------------------------------------
 
 def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
-    """Return total non-dismissed jobs and how many haven't been scored yet."""
+    """Return total non-dismissed jobs and how many need scoring (missing ≥1 field).
+
+    "Scored" means every current field_def has a row in job_analysis — matching
+    exactly the logic used by _already_scored_keys / score_all_jobs.
+    """
+    field_names = [r[0] for r in conn.execute("SELECT name FROM field_def").fetchall()]
+    n_fields = len(field_names)
+
     total = 0
     scored = 0
     for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
@@ -395,15 +401,28 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
             " WHERE COALESCE(s.status, 'new') != 'dismissed'",
             (source,),
         ).fetchone()[0]
-        s = conn.execute(
-            "SELECT COUNT(DISTINCT ja.job_id)"
-            f" FROM job_analysis ja JOIN {table} j ON j.job_id = ja.job_id"
-            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = ja.job_id"
-            " WHERE ja.source = ? AND COALESCE(s.status, 'new') != 'dismissed'",
-            (source, source),
-        ).fetchone()[0]
-        total  += t
-        scored += s
+        total += t
+        if n_fields > 0:
+            placeholders = ",".join("?" * n_fields)
+            s = conn.execute(
+                f"""
+                SELECT COUNT(*) FROM (
+                    SELECT ja.job_id
+                    FROM job_analysis ja
+                    JOIN {table} j ON j.job_id = ja.job_id
+                    JOIN field_def fd ON fd.id = ja.field_id
+                    LEFT JOIN job_status js
+                        ON js.source = ? AND js.job_id = ja.job_id
+                    WHERE ja.source = ?
+                      AND fd.name IN ({placeholders})
+                      AND COALESCE(js.status, 'new') != 'dismissed'
+                    GROUP BY ja.job_id
+                    HAVING COUNT(DISTINCT fd.name) = ?
+                )
+                """,
+                (source, source, *field_names, n_fields),
+            ).fetchone()[0]
+            scored += s
     return {"total": total, "new": total - scored}
 
 

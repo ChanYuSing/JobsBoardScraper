@@ -140,7 +140,7 @@
             {% elif key in sortable_cols %}
               <button type="button"
                       class="th-filter-btn{% if f_sort_by == key %} th-filter-btn--active{% endif %}"
-                      data-sort-col="{{ key }}">{{ label }}{% if f_sort_by == key %} {{ '↑' if f_sort_dir == 'asc' else '↓' }}{% endif %}</button>
+                      {% if f_sort_by == key %}data-sort-col="" title="Clear sort"{% else %}data-sort-col="{{ key }}"{% endif %}>{{ label }}{% if f_sort_by == key %} ✕{% endif %}</button>
             {% else %}
               <button type="button" class="th-filter-btn" disabled>{{ label }}</button>
             {% endif %}
@@ -219,6 +219,7 @@
       {% if f_keyword %}<button type="button" class="col-filter__clear" data-clear="keyword">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="title" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="title" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'title' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -232,6 +233,7 @@
       {% if f_company %}<button type="button" class="col-filter__clear" data-clear="company">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="company" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="company" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'company' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -245,6 +247,7 @@
       {% if f_location_kw %}<button type="button" class="col-filter__clear" data-clear="location_kw">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="location" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="location" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'location' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -265,6 +268,7 @@
       {% if f_work_type %}<button type="button" class="col-filter__clear" data-clear="work_type_multi">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="work_type" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="work_type" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'work_type' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -281,6 +285,7 @@
       {% if f_date_from or f_date_to %}<button type="button" class="col-filter__clear" data-clear="date_range">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="date_posted" data-sort-dir="desc">↓ Newest first</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="date_posted" data-sort-dir="asc">↑ Oldest first</button>
+      {% if f_sort_by == 'date_posted' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -299,6 +304,7 @@
       {% if f_source %}<button type="button" class="col-filter__clear" data-clear="source">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="source" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="source" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'source' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -317,6 +323,7 @@
       {% if f_classification %}<button type="button" class="col-filter__clear" data-clear="classification">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="classification" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="classification" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'classification' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -330,6 +337,7 @@
       {% if f_subclassification_kw %}<button type="button" class="col-filter__clear" data-clear="subclassification_kw">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="subclassification" data-sort-dir="asc">↑ A→Z</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="subclassification" data-sort-dir="desc">↓ Z→A</button>
+      {% if f_sort_by == 'subclassification' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -346,6 +354,7 @@
       {% if f_first_seen_from or f_first_seen_to %}<button type="button" class="col-filter__clear" data-clear="first_seen_range">Clear</button>{% endif %}
       <button type="button" class="col-filter__sort-btn" data-sort-col="first_seen_at" data-sort-dir="desc">↓ Newest first</button>
       <button type="button" class="col-filter__sort-btn" data-sort-col="first_seen_at" data-sort-dir="asc">↑ Oldest first</button>
+      {% if f_sort_by == 'first_seen_at' %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
     </div>
   </div>
   {% endif %}
@@ -374,6 +383,7 @@
         {% if score_filters.get(key) is not none %}<button type="button" class="col-filter__clear" data-clear="score_min_{{ key }}">Clear</button>{% endif %}
         <button type="button" class="col-filter__sort-btn" data-sort-col="{{ key }}" data-sort-dir="desc">↓ High → Low</button>
         <button type="button" class="col-filter__sort-btn" data-sort-col="{{ key }}" data-sort-dir="asc">↑ Low → High</button>
+        {% if f_sort_by == key %}<button type="button" class="col-filter__sort-btn" data-sort-col="" data-sort-dir="desc">✕ Clear sort</button>{% endif %}
       </div>
     </div>
     {% endif %}
@@ -496,7 +506,7 @@
   /* ── score-filter popup sort buttons ── */
   document.querySelectorAll('.col-filter__sort-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      document.getElementById('hid-sort-by').value  = btn.dataset.sortCol;
+      document.getElementById('hid-sort-by').value  = btn.dataset.sortCol;   // "" clears sort
       document.getElementById('hid-sort-dir').value = btn.dataset.sortDir;
       form.submit();
     });

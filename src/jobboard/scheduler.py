@@ -46,6 +46,8 @@ from .sources import build_adapter
 
 log = logging.getLogger("jobboard.scheduler")
 
+_MAX_CONSECUTIVE_ERRORS = 10   # abort any phase after this many back-to-back per-item errors
+
 # ── cancellation / active-run state ─────────────────────────────────────────
 _cancel_event = threading.Event()   # set to request cancellation of the running job
 _run_active = threading.Event()     # set while _run_all is executing
@@ -281,6 +283,7 @@ def _run_all(
                 log.info("[%s] enriching %d job(s)", source, len(job_ids))
                 set_run_jobs_total(conn, run_id, len(job_ids))
                 cancelled = False
+                consecutive_errors = 0
                 with adapter:
                     for job_id in job_ids:
                         if _is_cancelled(db_path):
@@ -293,10 +296,24 @@ def _run_all(
                             _write_detail(job_id, detail)
                             log_run_job(conn, run_id, source, job_id)
                             ok += 1
+                            consecutive_errors = 0
                         except Exception as exc:
-                            log.warning("[%s] detail error for %s: %s", source, job_id, exc)
+                            log.warning(
+                                "[%s] detail error for %s: %s (%d/%d consecutive)",
+                                source, job_id, exc,
+                                consecutive_errors + 1, _MAX_CONSECUTIVE_ERRORS,
+                            )
                             _write_error(job_id, f"{type(exc).__name__}: {exc}")
                             err += 1
+                            consecutive_errors += 1
+                            if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                                log.error(
+                                    "[%s] aborting enrich after %d consecutive errors.",
+                                    source, consecutive_errors,
+                                )
+                                raise RuntimeError(
+                                    f"Aborted after {consecutive_errors} consecutive errors: {exc}"
+                                ) from exc
                         conn.commit()
                         if (ok + err) % 10 == 0:
                             update_run_jobs_found(conn, run_id, ok)

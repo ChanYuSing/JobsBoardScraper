@@ -1,11 +1,11 @@
-﻿sources:
+sources:
   jobsdb:
-    enabled: true
+    enabled: false
     keywords: null
-    location: Hong Kong SAR
-    daterange: '1'
-    work_arrangement: null
-    work_type: null
+    location: Hong Kong SAR        # e.g. "Hong Kong SAR", "Singapore", "Sydney NSW"
+    daterange: '3'                 # days: 1 | 3 | 7 | 30
+    work_arrangement: null         # null | "remote" | "hybrid" | "onsite"
+    work_type: null                # null | "full_time" | "part_time" | "contract"
     classification: null
     subclassification: null
     salary_range: null
@@ -13,14 +13,15 @@
     sort_mode: null
     page_size: 32
     start_page: 1
-    max_pages: 0
+    max_pages: 0                   # 0 = no limit
+
   linkedin_guest:
-    enabled: true
-    location: Hong Kong
+    enabled: false
+    location: Hong Kong            # city / region as LinkedIn recognises it
     keywords:
-    - software engineer
-    hours_old: 720
-    job_type: null
+    - software engineer            # add or remove keywords for your field
+    hours_old: 72
+    job_type: null                 # null | "full_time" | "part_time" | "contract"
     is_remote: null
     experience_level: null
     easy_apply: null
@@ -29,7 +30,7 @@
     industry_id: null
 
 scraper:
-  request_timeout_seconds: 20
+  request_timeout_seconds: 30
   retries: 3
   jitter_ms:
   - 1000
@@ -41,37 +42,50 @@ storage:
 
 scheduler:
   enabled: false
-  cron: 0 1 * * *
+  cron: 0 0 * * *                 # daily at midnight; standard cron syntax
   order:
   - jobsdb
   - linkedin_guest
 
 ai:
-  provider: ollama
-  model: llama3.2
-  base_url: ''
-  api_key: ''
-  api_keys: {}
-  temperature: 0.2
+  provider: ollama                 # ollama | openai | grok | gemini | deepseek | anthropic | lmstudio | openai_compat
+  model: llama3.2                  # model name for the chosen provider
+  base_url: ''                     # leave empty to use the provider default URL
+  api_key: ''                      # your API key (or set AI_API_KEY env var)
+  api_keys: {}                     # per-provider keys, populated via the UI
+  models: {}                       # per-provider last-used model, populated via the UI
+  base_urls: {}                    # per-provider last-used base URL, populated via the UI
   auto_score: false
-  system_prompt: "You are an honest career advisor. Given a candidate CV and a job listing, score the job on each criterion below.\r\n\r\nBe objective - do not inflate scores. Use the full 1-10 scale:\r\n- 8-10: strong fit, apply without hesitation\r\n- 5-7: partial fit, real caveats exist\r\n- 1-4: poor fit, likely to be screened out or misaligned\r\n\r\nFlag key issues: skills gaps, seniority mismatch, scope, location, or work arrangement."
-  cv: ''
+  auto_score_preset_names: []
+  provider_params: {}              # per-provider parameter overrides, set via the UI
+  system_prompt: "You are an experienced career advisor. Your job is to evaluate how\
+    \ well a candidate's profile matches a specific job opening. Be objective and realistic.\r\
+    \n\r\nScoring Guidelines:\r\n- 9\u201310 = Excellent/Outstanding fit\r\n- 7\u2013\
+    8  = Strong fit with minor caveats\r\n- 5\u20136  = Moderate/Partial fit \u2013\
+    \ viable but has clear weaknesses\r\n- 3\u20134  = Weak fit \u2013 significant\
+    \ concerns\r\n- 1\u20132  = Poor fit \u2013 unlikely to succeed or highly misaligned\r\
+    \n\r\nBe concise and sharp in your reasoning."
+  cv: Paste your CV here.
   fields:
   - name: skills_match
     type: int
-    description: How well the candidate's skills match what the role requires (1-10)
+    description: How well the candidate's technical skills, projects, and experience
+      directly match the job's core requirements and responsibilities. (1-10)
   - name: seniority_fit
     type: int
-    description: How well the candidate's experience level matches the expected seniority (1-10)
+    description: How well the candidate's experience level matches the expected seniority
+      (1-10)
   - name: growth_value
     type: int
-    description: How much this role benefits the candidate's career growth (1-10)
+    description: How valuable this role would be for the candidate's long-term career
+      growth, skill development, and future opportunities. (1-10)
   - name: overall
     type: int
-    description: Overall recommendation - should the candidate apply? (1-10)
+    description: Overall recommendation score — should the candidate apply? (1-10)
   - name: verdict
     type: str
-    description: 'One sentence: the strongest reason to apply, or the key concern that stops you'
+    description: One or two sentence sharp verdict. Include the strongest reason to
+      apply OR the key reason to hesitate.
   prompt_fields:
   - title
   - company
@@ -85,11 +99,3 @@ ai:
   - date_posted
   - employment_type
   - seniority_level
-  - classification
-  - subclassification
-  - teaser
-  - abstract
-  - benefit_text
-  - job_function
-  - industries
-  - num_applicants

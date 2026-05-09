@@ -32,12 +32,16 @@ def list_runs(
     rows = conn.execute(
         f"""
         SELECT id, source, phase, started_at, finished_at,
-               status, jobs_found, jobs_total, error,
+               status,
+               COALESCE(jobs_found,
+                   (SELECT COUNT(*) FROM scheduler_run_job srj WHERE srj.run_id = sr.id)
+               ) AS jobs_found,
+               jobs_total, error,
                CASE WHEN started_at IS NULL THEN NULL
                     ELSE ROUND((JULIANDAY(COALESCE(finished_at, DATETIME('now')))
                                 - JULIANDAY(started_at)) * 86400)
                END AS duration_sec
-        FROM scheduler_run
+        FROM scheduler_run sr
         {clause}
         ORDER BY id DESC
         LIMIT ?

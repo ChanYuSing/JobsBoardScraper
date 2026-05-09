@@ -4,7 +4,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - jobboard_data:/app/data          # named volume = fast native Linux I/O
+      - jobboard_data:/app/data          # named volume = portable, fast native I/O
       - ./config.yaml:/app/config.yaml   # edit config without rebuilding
 
 volumes:
