@@ -178,10 +178,11 @@
         <label>
           Thinking mode
           <select name="thinking_enabled" id="ai-thinking-enabled">
-            <option value="">— off (default) —</option>
+            <option value="">— provider default —</option>
+            <option value="false">disabled</option>
             <option value="true">enabled</option>
           </select>
-          <small class="source-hint">Send <code>thinking: {type: "enabled"}</code>. Leave off for default behaviour.</small>
+          <small class="source-hint">Force thinking on/off. Use "disabled" for DeepSeek V4 Flash (defaults to thinking-on).</small>
         </label>
       </div>
 
