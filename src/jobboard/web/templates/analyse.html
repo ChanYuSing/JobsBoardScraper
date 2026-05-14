@@ -202,6 +202,8 @@
     <strong>Score Jobs</strong>
     <small id="job-count-badge" class="source-hint" style="margin-left:0.75rem">
       {{ job_counts.new }} new&nbsp;&middot;&nbsp;{{ job_counts.total }} total
+      {%- if job_counts.enrich_errors %}&nbsp;&middot;&nbsp;<span style="color:var(--pico-color-red-500)" title="These jobs failed enrichment — no description could be fetched. Run Enrich to retry.">⚠ {{ job_counts.enrich_errors }} enrich error{{ 's' if job_counts.enrich_errors != 1 }}</span>{% endif %}
+      {%- if job_counts.no_description %}&nbsp;&middot;&nbsp;<span style="color:var(--pico-color-amber-500)" title="These jobs were enriched but have no description text — they will be skipped by scoring.">{{ job_counts.no_description }} no description</span>{% endif %}
     </small>
   </header>
   <p class="source-hint">

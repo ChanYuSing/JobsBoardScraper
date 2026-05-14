@@ -425,7 +425,30 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
                 (source, source, *field_names, n_fields),
             ).fetchone()[0]
             scored += s
-    return {"total": total, "new": total - scored}
+    # Jobs excluded from scoring: enrich failed, or enriched but description still empty
+    enrich_errors = 0
+    no_description = 0
+    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
+        e = conn.execute(
+            f"SELECT COUNT(*) FROM {table} j"
+            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
+            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
+            " AND j.detail_error IS NOT NULL",
+            (source,),
+        ).fetchone()[0]
+        enrich_errors += e
+        n = conn.execute(
+            f"SELECT COUNT(*) FROM {table} j"
+            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
+            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
+            " AND j.detail_fetched_at IS NOT NULL"
+            " AND (j.description_text IS NULL OR j.description_text = '')"
+            " AND j.detail_error IS NULL",
+            (source,),
+        ).fetchone()[0]
+        no_description += n
+    return {"total": total, "new": total - scored,
+            "enrich_errors": enrich_errors, "no_description": no_description}
 
 
 def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[str, Any]]:
