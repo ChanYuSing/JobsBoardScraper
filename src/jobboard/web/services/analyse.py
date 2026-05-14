@@ -398,7 +398,8 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
         t = conn.execute(
             f"SELECT COUNT(*) FROM {table} j"
             " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
-            " WHERE COALESCE(s.status, 'new') != 'dismissed'",
+            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
+            " AND j.description_text IS NOT NULL AND j.description_text != ''",
             (source,),
         ).fetchone()[0]
         total += t
@@ -416,6 +417,7 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
                     WHERE ja.source = ?
                       AND fd.name IN ({placeholders})
                       AND COALESCE(js.status, 'new') != 'dismissed'
+                      AND j.description_text IS NOT NULL AND j.description_text != ''
                     GROUP BY ja.job_id
                     HAVING COUNT(DISTINCT fd.name) = ?
                 )
