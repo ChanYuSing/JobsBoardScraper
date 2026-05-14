@@ -388,21 +388,40 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
 
     "Scored" means every current field_def has a row in job_analysis — matching
     exactly the logic used by _already_scored_keys / score_all_jobs.
+    Uses one scan per source table via conditional aggregation to minimise queries.
     """
     field_names = [r[0] for r in conn.execute("SELECT name FROM field_def").fetchall()]
     n_fields = len(field_names)
 
     total = 0
     scored = 0
+    enrich_errors = 0
+    no_description = 0
+    awaiting_enrich = 0
+
     for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
-        t = conn.execute(
-            f"SELECT COUNT(*) FROM {table} j"
-            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
-            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
-            " AND j.description_text IS NOT NULL AND j.description_text != ''",
+        row = conn.execute(
+            f"""
+            SELECT
+                SUM(CASE WHEN (j.description_text IS NOT NULL AND j.description_text != '')
+                         THEN 1 ELSE 0 END),
+                SUM(CASE WHEN j.detail_error IS NOT NULL THEN 1 ELSE 0 END),
+                SUM(CASE WHEN j.detail_fetched_at IS NOT NULL
+                              AND (j.description_text IS NULL OR j.description_text = '')
+                              AND j.detail_error IS NULL THEN 1 ELSE 0 END),
+                SUM(CASE WHEN j.detail_fetched_at IS NULL
+                              AND j.detail_error IS NULL THEN 1 ELSE 0 END)
+            FROM {table} j
+            LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id
+            WHERE COALESCE(s.status, 'new') != 'dismissed'
+            """,
             (source,),
-        ).fetchone()[0]
-        total += t
+        ).fetchone()
+        total         += row[0] or 0
+        enrich_errors += row[1] or 0
+        no_description += row[2] or 0
+        awaiting_enrich += row[3] or 0
+
         if n_fields > 0:
             placeholders = ",".join("?" * n_fields)
             s = conn.execute(
@@ -425,40 +444,7 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
                 (source, source, *field_names, n_fields),
             ).fetchone()[0]
             scored += s
-    # Jobs excluded from scoring: enrich failed, or enriched but description still empty
-    enrich_errors = 0
-    no_description = 0
-    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
-        e = conn.execute(
-            f"SELECT COUNT(*) FROM {table} j"
-            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
-            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
-            " AND j.detail_error IS NOT NULL",
-            (source,),
-        ).fetchone()[0]
-        enrich_errors += e
-        n = conn.execute(
-            f"SELECT COUNT(*) FROM {table} j"
-            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
-            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
-            " AND j.detail_fetched_at IS NOT NULL"
-            " AND (j.description_text IS NULL OR j.description_text = '')"
-            " AND j.detail_error IS NULL",
-            (source,),
-        ).fetchone()[0]
-        no_description += n
-    # Jobs not yet attempted: detail_fetched_at IS NULL and no error set
-    awaiting_enrich = 0
-    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
-        a = conn.execute(
-            f"SELECT COUNT(*) FROM {table} j"
-            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
-            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
-            " AND j.detail_fetched_at IS NULL"
-            " AND j.detail_error IS NULL",
-            (source,),
-        ).fetchone()[0]
-        awaiting_enrich += a
+
     return {"total": total, "new": total - scored,
             "enrich_errors": enrich_errors, "no_description": no_description,
             "awaiting_enrich": awaiting_enrich}
