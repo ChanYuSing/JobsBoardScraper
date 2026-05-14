@@ -434,6 +434,7 @@ def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[
             SELECT j.* FROM {table} j
             LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id
             WHERE COALESCE(s.status, 'new') != 'dismissed'
+              AND j.description_text IS NOT NULL AND j.description_text != ''
             ORDER BY j.first_seen_at DESC
             """,
             (source,),
