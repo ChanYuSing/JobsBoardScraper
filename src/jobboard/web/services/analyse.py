@@ -447,8 +447,21 @@ def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
             (source,),
         ).fetchone()[0]
         no_description += n
+    # Jobs not yet attempted: detail_fetched_at IS NULL and no error set
+    awaiting_enrich = 0
+    for source, table in (("jobsdb", "job_jobsdb"), ("linkedin_guest", "job_linkedin")):
+        a = conn.execute(
+            f"SELECT COUNT(*) FROM {table} j"
+            " LEFT JOIN job_status s ON s.source = ? AND s.job_id = j.job_id"
+            " WHERE COALESCE(s.status, 'new') != 'dismissed'"
+            " AND j.detail_fetched_at IS NULL"
+            " AND j.detail_error IS NULL",
+            (source,),
+        ).fetchone()[0]
+        awaiting_enrich += a
     return {"total": total, "new": total - scored,
-            "enrich_errors": enrich_errors, "no_description": no_description}
+            "enrich_errors": enrich_errors, "no_description": no_description,
+            "awaiting_enrich": awaiting_enrich}
 
 
 def get_jobs_for_analysis(conn: sqlite3.Connection, max_jobs: int) -> list[dict[str, Any]]:
