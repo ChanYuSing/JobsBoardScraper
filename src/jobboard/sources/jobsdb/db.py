@@ -133,14 +133,14 @@ def jobs_needing_enrich(
     stale_days: int | None = None,
     limit: int | None = None,
 ) -> list[str]:
-    """Return job_ids with no detail yet, or whose detail is older than stale_days."""
+    """Return job_ids with no detail yet, older than stale_days, or fetched but empty."""
     where = "(detail_fetched_at IS NULL"
     args: list = []
     if stale_days is not None:
         cutoff = _now_minus_days(stale_days)
         where += " OR detail_fetched_at < ?"
         args.append(cutoff)
-    where += ")"
+    where += " OR (description_text IS NULL OR description_text = ''))"
     sql = (
         f"SELECT job_id FROM job_jobsdb WHERE {where} "
         "ORDER BY first_seen_at DESC"
