@@ -2,11 +2,15 @@
 
 Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)** into a local SQLite database, with a built-in web UI to browse, filter, triage, and AI-score results.
 
-## Quick start
+---
 
-This walks you through your first session from zero to scored jobs.
+## Setup and first run
 
-### 1. Install and launch
+### Step 1 ¡X Install
+
+**Option A: Docker (recommended, no Python required)**
+
+Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 
 ```bash
 git clone https://github.com/ChanYuSing/JobsBoardScraper.git
@@ -14,158 +18,118 @@ cd JobBoardScraper
 docker compose up -d
 ```
 
-Open `http://localhost:8001`. See [Setup](#setup) for non-Docker options.
+Open `http://localhost:8001`.
 
-### 2. Configure your search
+- Data is saved in a Docker volume ¡X not lost when the container stops.
+- Edit `config.yaml` at any time ¡X no rebuild needed.
+- To stop: `docker compose stop`. To remove the container (data preserved): `docker compose down`.
 
-1. Go to **Sources**.
-2. Pick a source (JobsDB or LinkedIn).
-3. Enter your keywords (one per line) and set your location.
-4. Click **Save**.
-
-### 3. Fetch listings
-
-Click **Run Now** on the Sources page (or **Run All Now** on the Schedule page).
-
-This pulls listing cards â€” title, company, salary. Check the **Runs** page to see progress. A typical run fetches hundreds to thousands of listings in under a minute.
-
-### 4. Enrich with full descriptions
-
-Go to **Schedule â†’ Run All Now** and make sure the Enrich phase runs, or trigger it separately from the Sources page.
-
-This fetches the full job description for each listing. It takes longer (one HTTP request per job). You must enrich before scoring â€” jobs without descriptions are skipped by the AI.
-
-### 5. Set up AI scoring
-
-> **Prerequisite:** You need either a local model running (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic.
-
-1. Go to **Analyse**.
-2. Paste your CV into the **Your CV** textarea.
-3. Select your AI provider and enter your API key.
-4. Click **Save settings**.
-5. Click **Score new jobs** â€” the AI scores every enriched job against your CV.
-
-### 6. Browse results
-
-Go to **Jobs**. Add score columns from the column picker, then filter by minimum score to surface the best matches. Click any job title to read the full description and verdict.
-
----
-
-## Setup
-
-### Option A â€” Docker (recommended, no Python required)
-
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-```bash
-git clone https://github.com/ChanYuSing/JobsBoardScraper.git
-cd JobBoardScraper
-docker compose up
-```
-
-Open `http://localhost:8001` in your browser. That's it.
-
-- Your database is saved in `./data/` on your machine (not lost when the container stops).
-- Edit `config.yaml` at any time â€” no rebuild needed.
-- To stop: `Ctrl+C`. To run in the background: `docker compose up -d`.
-
-> **Note for local AI (Ollama / LM Studio):** These run on your machine, not inside the container.
-> Change the provider `base_url` in `config.yaml` to use `host.docker.internal` instead of `localhost`:
+> **Local AI (Ollama / LM Studio):** These run on your machine, not inside the container. Set `base_url` to use `host.docker.internal`:
 > ```yaml
 > ai:
 >   provider: ollama
 >   base_url: http://host.docker.internal:11434/v1
 > ```
 
----
-
-### Option B â€” Python (manual)
-
-**Requirements:** Python 3.12+
-
-**Windows (PowerShell)**
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-```
-
-**macOS / Linux**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-## Web UI (recommended)
-
-Start the web server:
+**Option B: Python 3.12+**
 
 ```bash
+# macOS / Linux
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
 uvicorn src.jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-Open `http://127.0.0.1:8001` in your browser.
+```powershell
+# Windows (PowerShell)
+python -m venv .venv ; .\.venv\Scripts\Activate.ps1
+pip install -e .
+uvicorn src.jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
+```
 
-### Typical workflow
+Open `http://127.0.0.1:8001`.
 
-1. **Fetch** â€” pulls listing cards (title, company, salary). Run from the Sources page or Schedule page.
-2. **Enrich** â€” fetches the full description for each job (one request per listing). Must run before scoring.
-3. **Score** â€” sends each job's description + your CV to the AI. Only jobs with a description are scored.
+---
 
-All three phases can be triggered manually from the UI or run automatically on a cron schedule.
+### Step 2 ¡X Configure your search
+
+1. Go to **Sources**.
+2. Enter keywords (one per line ¡X all terms are ANDed together) and set your location.
+3. Click **Save** ¡X changes are written to `config.yaml` immediately.
+
+See [Config reference](#config-reference-configyaml) for all available filters (work type, salary, date range, etc.).
+
+---
+
+### Step 3 ¡X Fetch listings
+
+Click **Run Now** on the Sources page, or **Run All Now** on the Schedule page.
+
+This pulls listing cards ¡X title, company, salary. Check the **Runs** page for progress. A typical run fetches hundreds to thousands of listings in under a minute. Re-running fetch is safe ¡X existing rows are upserted.
+
+---
+
+### Step 4 ¡X Enrich with full descriptions
+
+After fetch completes, click **Run Now** again (the Enrich phase runs as a second pass), or use **Run All Now** on the Schedule page to run both phases together.
+
+This fetches the full job description for each listing (one HTTP request per job). It takes longer than fetch. Jobs without descriptions are skipped by the AI scorer ¡X enrich must run before scoring.
+
+---
+
+### Step 5 ¡X Score jobs with AI
+
+> **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic. See the [AI providers](#ai-providers) table.
+
+1. Go to **Analyse**.
+2. Paste your CV into the **Your CV** textarea.
+3. Select your AI provider and enter your API key.
+4. Optionally adjust the **Scoring fields** and **System prompt** to match your preferences.
+5. Click **Save settings**.
+6. Click **Score new jobs** to score all unscored jobs, or **Re-score all** to re-run everything.
+
+---
+
+### Step 6 ¡X Browse results
+
+Go to **Jobs**. Add score columns from the column picker and filter by minimum score to surface the best matches. Click any job title to open the full description and AI verdict. Triage jobs as **Saved**, **Dismissed**, or **New**.
+
+---
+
+## Web UI reference
 
 ### Pages
 
 | Page | What you can do |
 |---|---|
-| **Jobs** | Browse all scraped listings. Filter by source, status, keyword, date, work type, salary, and more. Click any job title to open the detail panel. Triage jobs as Saved / Dismissed / New. Add AI score columns and filter by minimum score. |
-| **Sources** | Configure search parameters for each source â€”keywords, location, filters. Enable or disable a source. Save and optionally trigger a run immediately. |
-| **Schedule** | Set a cron schedule (hour, minute, days of week). Control run order. Tune HTTP scraper settings (timeout, jitter, user agent). Toggle auto-score after each run. |
-| **Runs** | View the full history of every scrape run â€”source, phase, status, duration, job count, and any errors. Cancel queued or active runs. |
-| **Analyse** | Paste your CV, define scoring fields, write a system prompt, preview the assembled prompt, then score all jobs via any supported AI provider. |
-
-### Configuring sources in the UI
-
-1. Go to **Sources**.
-2. Enter keywords (one per line â€” all terms are ANDed together).
-3. Set location and any filters (date range, work type, etc.).
-4. Click **Save** â€” changes are written to `config.yaml` immediately.
-5. Click **Run Now** to trigger a scrape for that source without waiting for the schedule.
-
-### Setting a schedule
-
-1. Go to **Schedule â†’ Run settings**.
-2. Pick a time and days. Leave all days unchecked to run every day.
-3. Set the run order using the dropdowns.
-4. Click **Save settings**. The live scheduler is updated immediately â€” no restart required.
-5. Use **Run All Now** to trigger a run immediately.
+| **Jobs** | Browse all scraped listings. Filter by source, status, keyword, date, work type, salary, and more. Click any job to open the detail panel. Triage jobs as Saved / Dismissed / New. Add AI score columns and filter by minimum score. |
+| **Sources** | Configure search parameters for each source ¡X keywords, location, filters. Enable or disable a source. Save and trigger a run immediately. |
+| **Schedule** | Set a cron schedule (hour, minute, days of week). Control run order. Tune scraper settings (timeout, jitter, user agent). Toggle auto-score after each run. |
+| **Runs** | View the full history of every scrape run ¡X source, phase, status, duration, job count, and any errors. Cancel queued or active runs. |
+| **Analyse** | Paste your CV, define scoring fields, write a system prompt, preview the assembled prompt, then score jobs via any supported AI provider. |
 
 ### Score Jobs badge
 
 The badge on the Analyse page shows the full breakdown:
 
-`N new Â· N total Â· N awaiting enrich Â· âš  N enrich errors Â· N no description`
+`N new ¡P N total ¡P N awaiting enrich ¡P ? N enrich errors ¡P N no description`
 
 | State | Meaning |
 |---|---|
 | **new** | Have a description but not yet scored |
 | **total** | All non-dismissed jobs with a description (the scoring pool) |
-| **awaiting enrich** | Scraped but not yet enriched â€” run Enrich first |
-| **âš  enrich errors** | Enrich was attempted but failed (network error, 403, etc.) â€” will be retried automatically on the next Enrich run |
-| **no description** | Enriched successfully but the listing had no description text â€” will be retried on the next Enrich run |
+| **awaiting enrich** | Scraped but not yet enriched ¡X run Enrich first |
+| **? enrich errors** | Enrich failed (network error, 403, etc.) ¡X retried automatically on the next Enrich run |
+| **no description** | Enriched but the listing had no description text ¡X retried on the next Enrich run |
 
-### AI scoring (Analyse page)
+### Setting a schedule
 
-1. Go to **Analyse**.
-2. Paste your CV in the **Your CV** textarea.
-3. Adjust the **Scoring fields** if needed â€” each field becomes a column in the Jobs table.
-4. Edit the **System prompt** to match your preferences.
-5. Click **Preview prompts** to verify the assembled prompt on a random job.
-6. Click **Save settings** to persist CV, fields, and prompt to `config.yaml`.
-7. Select an AI provider and enter your API key, then click **Score new jobs** (unscored only) or **Re-score all**.
+1. Go to **Schedule ¡÷ Run settings**.
+2. Pick a time and days. Leave all days unchecked to run every day.
+3. Set the run order using the dropdowns.
+4. Click **Save settings** ¡X the scheduler updates immediately, no restart required.
 
-Alternatively, enable **Auto-score** on the Schedule page to score new jobs automatically after each fetch+enrich cycle.
+Enable **Auto-score** to have jobs scored automatically after each fetch+enrich cycle.
 
 ---
 
@@ -173,13 +137,13 @@ Alternatively, enable **Auto-score** on the Schedule page to score new jobs auto
 
 All operations are also available from the command line.
 
-```powershell
-# Phase 1 â€”fetch card data (title, company, location, salary)
+```bash
+# Phase 1 -- fetch card data (title, company, location, salary)
 jobboard fetch                          # all enabled sources
 jobboard fetch --source linkedin_guest
 jobboard fetch --source jobsdb
 
-# Phase 2 â€”enrich with full descriptions (one HTTP request per job)
+# Phase 2 -- enrich with full descriptions (one HTTP request per job)
 jobboard enrich
 jobboard enrich --source linkedin_guest
 jobboard enrich --source jobsdb
@@ -188,8 +152,6 @@ jobboard enrich --source jobsdb
 jobboard new  --since 24h              # jobs first seen in last 24 h
 jobboard runs --source jobsdb -n 5     # last 5 run records
 ```
-
-Scraping is two-phase: `fetch` collects listing cards; `enrich` fetches the full description for each job. Re-running `fetch` is safe â€”existing rows are upserted (`last_seen_at` is updated, new rows get `first_seen_at` set).
 
 ---
 
@@ -204,7 +166,7 @@ Scraping is two-phase: `fetch` collects listing cards; `enrich` fetches the full
 
 ## Config reference (`config.yaml`)
 
-All settings are editable in the web UI. The file is the single source of truth â€”the UI reads and writes it directly.
+All settings are editable in the web UI. The file is the single source of truth ¡X the UI reads and writes it directly.
 
 ```yaml
 sources:
@@ -226,7 +188,7 @@ sources:
 
   linkedin_guest:
     enabled: true
-    keywords: []                # required by LinkedIn â€”blank returns no results
+    keywords: []                # required by LinkedIn -- blank returns no results
     location: Hong Kong
     hours_old: 720              # last N hours (720 = 30 days); null = all time
     job_type: null              # fulltime | parttime | contract | internship
@@ -252,7 +214,7 @@ scheduler:
   order: [jobsdb, linkedin_guest]
 
 ai:
-  provider: ollama              # see provider table below
+  provider: ollama              # see AI providers table below
   model: llama3.2
   base_url: ""                  # leave empty to use provider default
   api_key: ""                   # or set AI_API_KEY environment variable
@@ -267,10 +229,10 @@ ai:
       description: >-
         How well the candidate's demonstrated skills and experience cover the role's
         core technical and functional requirements. Score only against stated core
-        requirements â€” ignore nice-to-haves.
-        1â€“3: missing most core requirements;
-        4â€“6: meets some core requirements but has notable gaps;
-        7â€“10: meets most or all core requirements. (1-10)
+        requirements ¡X ignore nice-to-haves.
+        1¡V3: missing most core requirements;
+        4¡V6: meets some core requirements but has notable gaps;
+        7¡V10: meets most or all core requirements. (1-10)
     - name: seniority_fit
       type: int
       description: >-
@@ -278,20 +240,20 @@ ai:
         Penalise both under-qualification (likely rejection) and over-qualification
         (likely boredom or mismatch). If the JD gives no explicit seniority signal,
         infer from the depth of responsibilities described.
-        1â€“3: significantly mismatched in either direction;
-        4â€“6: roughly appropriate but with meaningful gap or excess;
-        7â€“10: well-matched level. (1-10)
+        1¡V3: significantly mismatched in either direction;
+        4¡V6: roughly appropriate but with meaningful gap or excess;
+        7¡V10: well-matched level. (1-10)
     - name: growth_value
       type: int
       description: >-
         Assuming the candidate secures and works this role, how much would it advance
         their career, skills, or future opportunities? Score independently of hiring
-        probability â€” a reach role can still score 9. Consider: skill development,
+        probability ¡X a reach role can still score 9. Consider: skill development,
         company or industry prestige, scope of the role, and alignment with their
         stated career direction.
-        1â€“3: little benefit or actively misaligned with their goals;
-        4â€“6: modest step, some relevant exposure;
-        7â€“10: meaningful accelerator â€” valuable skills, brand, or access. (1-10)
+        1¡V3: little benefit or actively misaligned with their goals;
+        4¡V6: modest step, some relevant exposure;
+        7¡V10: meaningful accelerator ¡X valuable skills, brand, or access. (1-10)
     - name: overall
       type: int
       description: >-
@@ -299,7 +261,7 @@ ai:
         value. A strong reach role with high growth value warrants a higher score than
         an easy win with low value. A mismatch on role direction or industry is
         sufficient to score low even if technical skills match.
-        1â€“3: do not apply; 4â€“6: apply if bandwidth allows; 7â€“10: strong apply. (1-10)
+        1¡V3: do not apply; 4¡V6: apply if bandwidth allows; 7¡V10: strong apply. (1-10)
     - name: verdict
       type: str
       description: >-
