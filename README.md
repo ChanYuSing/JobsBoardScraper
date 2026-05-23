@@ -18,7 +18,7 @@ Open Terminal (macOS/Linux) or PowerShell (Windows), then run:
 
 ```bash
 git clone https://github.com/ChanYuSing/JobsBoardScraper.git
-cd JobBoardScraper
+cd JobsBoardScraper
 docker compose up -d
 ```
 
