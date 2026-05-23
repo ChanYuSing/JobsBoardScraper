@@ -2,6 +2,55 @@
 
 Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)** into a local SQLite database, with a built-in web UI to browse, filter, triage, and AI-score results.
 
+## Quick start
+
+This walks you through your first session from zero to scored jobs.
+
+### 1. Install and launch
+
+```bash
+git clone https://github.com/ChanYuSing/JobsBoardScraper.git
+cd JobBoardScraper
+docker compose up -d
+```
+
+Open `http://localhost:8001`. See [Setup](#setup) for non-Docker options.
+
+### 2. Configure your search
+
+1. Go to **Sources**.
+2. Pick a source (JobsDB or LinkedIn).
+3. Enter your keywords (one per line) and set your location.
+4. Click **Save**.
+
+### 3. Fetch listings
+
+Click **Run Now** on the Sources page (or **Run All Now** on the Schedule page).
+
+This pulls listing cards — title, company, salary. Check the **Runs** page to see progress. A typical run fetches hundreds to thousands of listings in under a minute.
+
+### 4. Enrich with full descriptions
+
+Go to **Schedule → Run All Now** and make sure the Enrich phase runs, or trigger it separately from the Sources page.
+
+This fetches the full job description for each listing. It takes longer (one HTTP request per job). You must enrich before scoring — jobs without descriptions are skipped by the AI.
+
+### 5. Set up AI scoring
+
+> **Prerequisite:** You need either a local model running (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic.
+
+1. Go to **Analyse**.
+2. Paste your CV into the **Your CV** textarea.
+3. Select your AI provider and enter your API key.
+4. Click **Save settings**.
+5. Click **Score new jobs** — the AI scores every enriched job against your CV.
+
+### 6. Browse results
+
+Go to **Jobs**. Add score columns from the column picker, then filter by minimum score to surface the best matches. Click any job title to read the full description and verdict.
+
+---
+
 ## Setup
 
 ### Option A — Docker (recommended, no Python required)
@@ -58,6 +107,14 @@ uvicorn src.jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
 
 Open `http://127.0.0.1:8001` in your browser.
 
+### Typical workflow
+
+1. **Fetch** — pulls listing cards (title, company, salary). Run from the Sources page or Schedule page.
+2. **Enrich** — fetches the full description for each job (one request per listing). Must run before scoring.
+3. **Score** — sends each job's description + your CV to the AI. Only jobs with a description are scored.
+
+All three phases can be triggered manually from the UI or run automatically on a cron schedule.
+
 ### Pages
 
 | Page | What you can do |
@@ -83,14 +140,6 @@ Open `http://127.0.0.1:8001` in your browser.
 3. Set the run order using the dropdowns.
 4. Click **Save settings**. The live scheduler is updated immediately — no restart required.
 5. Use **Run All Now** to trigger a run immediately.
-
-### Typical workflow
-
-1. **Fetch** — pulls listing cards (title, company, salary). Run from the Sources page or Schedule page.
-2. **Enrich** — fetches the full description for each job (one request per listing). Must run before scoring.
-3. **Score** — sends each job's description + your CV to the AI. Only jobs with a description are scored.
-
-All three phases can be triggered manually from the UI or run automatically on a cron schedule.
 
 ### Score Jobs badge
 
