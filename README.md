@@ -6,7 +6,7 @@ Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)**
 
 ## Setup and first run
 
-### Step 1 ¡X Install
+### Step 1 â€” Install
 
 **Option A: Docker (recommended, no Python required)**
 
@@ -20,8 +20,8 @@ docker compose up -d
 
 Open `http://localhost:8001`.
 
-- Data is saved in a Docker volume ¡X not lost when the container stops.
-- Edit `config.yaml` at any time ¡X no rebuild needed.
+- Data is saved in a Docker volume â€” not lost when the container stops.
+- Edit `config.yaml` at any time â€” no rebuild needed.
 - To stop: `docker compose stop`. To remove the container (data preserved): `docker compose down`.
 
 > **Local AI (Ollama / LM Studio):** These run on your machine, not inside the container. Set `base_url` to use `host.docker.internal`:
@@ -51,33 +51,33 @@ Open `http://127.0.0.1:8001`.
 
 ---
 
-### Step 2 ¡X Configure your search
+### Step 2 â€” Configure your search
 
 1. Go to **Sources**.
-2. Enter keywords (one per line ¡X all terms are ANDed together) and set your location.
-3. Click **Save** ¡X changes are written to `config.yaml` immediately.
+2. Enter keywords (one per line â€” all terms are ANDed together) and set your location.
+3. Click **Save** â€” changes are written to `config.yaml` immediately.
 
 See [Config reference](#config-reference-configyaml) for all available filters (work type, salary, date range, etc.).
 
 ---
 
-### Step 3 ¡X Fetch listings
+### Step 3 â€” Fetch listings
 
 Click **Run Now** on the Sources page, or **Run All Now** on the Schedule page.
 
-This pulls listing cards ¡X title, company, salary. Check the **Runs** page for progress. A typical run fetches hundreds to thousands of listings in under a minute. Re-running fetch is safe ¡X existing rows are upserted.
+This pulls listing cards â€” title, company, salary. Check the **Runs** page for progress. A typical run fetches hundreds to thousands of listings in under a minute. Re-running fetch is safe â€” existing rows are upserted.
 
 ---
 
-### Step 4 ¡X Enrich with full descriptions
+### Step 4 â€” Enrich with full descriptions
 
 After fetch completes, click **Run Now** again (the Enrich phase runs as a second pass), or use **Run All Now** on the Schedule page to run both phases together.
 
-This fetches the full job description for each listing (one HTTP request per job). It takes longer than fetch. Jobs without descriptions are skipped by the AI scorer ¡X enrich must run before scoring.
+This fetches the full job description for each listing (one HTTP request per job). It takes longer than fetch. Jobs without descriptions are skipped by the AI scorer â€” enrich must run before scoring.
 
 ---
 
-### Step 5 ¡X Score jobs with AI
+### Step 5 â€” Score jobs with AI
 
 > **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic. See the [AI providers](#ai-providers) table.
 
@@ -90,7 +90,7 @@ This fetches the full job description for each listing (one HTTP request per job
 
 ---
 
-### Step 6 ¡X Browse results
+### Step 6 â€” Browse results
 
 Go to **Jobs**. Add score columns from the column picker and filter by minimum score to surface the best matches. Click any job title to open the full description and AI verdict. Triage jobs as **Saved**, **Dismissed**, or **New**.
 
@@ -103,31 +103,31 @@ Go to **Jobs**. Add score columns from the column picker and filter by minimum s
 | Page | What you can do |
 |---|---|
 | **Jobs** | Browse all scraped listings. Filter by source, status, keyword, date, work type, salary, and more. Click any job to open the detail panel. Triage jobs as Saved / Dismissed / New. Add AI score columns and filter by minimum score. |
-| **Sources** | Configure search parameters for each source ¡X keywords, location, filters. Enable or disable a source. Save and trigger a run immediately. |
+| **Sources** | Configure search parameters for each source â€” keywords, location, filters. Enable or disable a source. Save and trigger a run immediately. |
 | **Schedule** | Set a cron schedule (hour, minute, days of week). Control run order. Tune scraper settings (timeout, jitter, user agent). Toggle auto-score after each run. |
-| **Runs** | View the full history of every scrape run ¡X source, phase, status, duration, job count, and any errors. Cancel queued or active runs. |
+| **Runs** | View the full history of every scrape run â€” source, phase, status, duration, job count, and any errors. Cancel queued or active runs. |
 | **Analyse** | Paste your CV, define scoring fields, write a system prompt, preview the assembled prompt, then score jobs via any supported AI provider. |
 
 ### Score Jobs badge
 
 The badge on the Analyse page shows the full breakdown:
 
-`N new ¡P N total ¡P N awaiting enrich ¡P ? N enrich errors ¡P N no description`
+`N new Â· N total Â· N awaiting enrich Â· âš  N enrich errors Â· N no description`
 
 | State | Meaning |
 |---|---|
 | **new** | Have a description but not yet scored |
 | **total** | All non-dismissed jobs with a description (the scoring pool) |
-| **awaiting enrich** | Scraped but not yet enriched ¡X run Enrich first |
-| **? enrich errors** | Enrich failed (network error, 403, etc.) ¡X retried automatically on the next Enrich run |
-| **no description** | Enriched but the listing had no description text ¡X retried on the next Enrich run |
+| **awaiting enrich** | Scraped but not yet enriched â€” run Enrich first |
+| **âš  enrich errors** | Enrich failed (network error, 403, etc.) â€” retried automatically on the next Enrich run |
+| **no description** | Enriched but the listing had no description text â€” retried on the next Enrich run |
 
 ### Setting a schedule
 
-1. Go to **Schedule ¡÷ Run settings**.
+1. Go to **Schedule â†’ Run settings**.
 2. Pick a time and days. Leave all days unchecked to run every day.
 3. Set the run order using the dropdowns.
-4. Click **Save settings** ¡X the scheduler updates immediately, no restart required.
+4. Click **Save settings** â€” the scheduler updates immediately, no restart required.
 
 Enable **Auto-score** to have jobs scored automatically after each fetch+enrich cycle.
 
@@ -166,7 +166,7 @@ jobboard runs --source jobsdb -n 5     # last 5 run records
 
 ## Config reference (`config.yaml`)
 
-All settings are editable in the web UI. The file is the single source of truth ¡X the UI reads and writes it directly.
+All settings are editable in the web UI. The file is the single source of truth â€” the UI reads and writes it directly.
 
 ```yaml
 sources:
@@ -229,10 +229,10 @@ ai:
       description: >-
         How well the candidate's demonstrated skills and experience cover the role's
         core technical and functional requirements. Score only against stated core
-        requirements ¡X ignore nice-to-haves.
-        1¡V3: missing most core requirements;
-        4¡V6: meets some core requirements but has notable gaps;
-        7¡V10: meets most or all core requirements. (1-10)
+        requirements â€” ignore nice-to-haves.
+        1â€“3: missing most core requirements;
+        4â€“6: meets some core requirements but has notable gaps;
+        7â€“10: meets most or all core requirements. (1-10)
     - name: seniority_fit
       type: int
       description: >-
@@ -240,20 +240,20 @@ ai:
         Penalise both under-qualification (likely rejection) and over-qualification
         (likely boredom or mismatch). If the JD gives no explicit seniority signal,
         infer from the depth of responsibilities described.
-        1¡V3: significantly mismatched in either direction;
-        4¡V6: roughly appropriate but with meaningful gap or excess;
-        7¡V10: well-matched level. (1-10)
+        1â€“3: significantly mismatched in either direction;
+        4â€“6: roughly appropriate but with meaningful gap or excess;
+        7â€“10: well-matched level. (1-10)
     - name: growth_value
       type: int
       description: >-
         Assuming the candidate secures and works this role, how much would it advance
         their career, skills, or future opportunities? Score independently of hiring
-        probability ¡X a reach role can still score 9. Consider: skill development,
+        probability â€” a reach role can still score 9. Consider: skill development,
         company or industry prestige, scope of the role, and alignment with their
         stated career direction.
-        1¡V3: little benefit or actively misaligned with their goals;
-        4¡V6: modest step, some relevant exposure;
-        7¡V10: meaningful accelerator ¡X valuable skills, brand, or access. (1-10)
+        1â€“3: little benefit or actively misaligned with their goals;
+        4â€“6: modest step, some relevant exposure;
+        7â€“10: meaningful accelerator â€” valuable skills, brand, or access. (1-10)
     - name: overall
       type: int
       description: >-
@@ -261,7 +261,7 @@ ai:
         value. A strong reach role with high growth value warrants a higher score than
         an easy win with low value. A mismatch on role direction or industry is
         sufficient to score low even if technical skills match.
-        1¡V3: do not apply; 4¡V6: apply if bandwidth allows; 7¡V10: strong apply. (1-10)
+        1â€“3: do not apply; 4â€“6: apply if bandwidth allows; 7â€“10: strong apply. (1-10)
     - name: verdict
       type: str
       description: >-
