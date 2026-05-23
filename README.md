@@ -10,7 +10,11 @@ Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)**
 
 **Option A: Docker (recommended, no Python required)**
 
+Docker runs the app in an isolated environment on your computer — nothing is installed globally.
+
 Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+Open Terminal (macOS/Linux) or PowerShell (Windows), then run:
 
 ```bash
 git clone https://github.com/ChanYuSing/JobsBoardScraper.git
@@ -23,13 +27,6 @@ Open `http://localhost:8001`.
 - Data is saved in a Docker volume — not lost when the container stops.
 - Edit `config.yaml` at any time — no rebuild needed.
 - To stop: `docker compose stop`. To remove the container (data preserved): `docker compose down`.
-
-> **Local AI (Ollama / LM Studio):** These run on your machine, not inside the container. Set `base_url` to use `host.docker.internal`:
-> ```yaml
-> ai:
->   provider: ollama
->   base_url: http://host.docker.internal:11434/v1
-> ```
 
 **Option B: Python 3.12+**
 
@@ -54,8 +51,8 @@ Open `http://127.0.0.1:8001`.
 ### Step 2 — Configure your search
 
 1. Go to **Sources**.
-2. Enter keywords (one per line — all terms are ANDed together) and set your location.
-3. Click **Save** — changes are written to `config.yaml` immediately.
+2. Enter keywords (one per line — the scraper looks for jobs matching all of the keywords you enter) and set your location.
+3. Click **Save**.
 
 See [Config reference](#config-reference-configyaml) for all available filters (work type, salary, date range, etc.).
 
@@ -63,28 +60,35 @@ See [Config reference](#config-reference-configyaml) for all available filters (
 
 ### Step 3 — Fetch listings
 
-Click **Run Now** on the Sources page, or **Run All Now** on the Schedule page.
+Click **Run Now** next to the source you want on the Sources page, or **Run All Now** on the Schedule page.
 
-This pulls listing cards — title, company, salary. Check the **Runs** page for progress. A typical run fetches hundreds to thousands of listings in under a minute. Re-running fetch is safe — existing rows are upserted.
+This pulls listing cards — title, company, salary. Check the **Runs** page for progress. A typical run fetches hundreds to thousands of listings in under a minute. Running fetch again is safe — duplicates are skipped.
 
 ---
 
 ### Step 4 — Enrich with full descriptions
 
-After fetch completes, click **Run Now** again (the Enrich phase runs as a second pass), or use **Run All Now** on the Schedule page to run both phases together.
+Use **Run All Now** on the Schedule page to run fetch and enrich together, or click **Run Now** again on the Sources page to trigger enrich separately after fetch completes.
 
-This fetches the full job description for each listing (one HTTP request per job). It takes longer than fetch. Jobs without descriptions are skipped by the AI scorer — enrich must run before scoring.
+This downloads the full description for each job listing. It takes longer than fetch. Jobs without descriptions are excluded from AI scoring — enrich must run before scoring.
 
 ---
 
 ### Step 5 — Score jobs with AI
 
-> **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic. See the [AI providers](#ai-providers) table.
+> **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic. Sign up at the provider's website to obtain a key. See the [AI providers](#ai-providers) table.
+
+> **Local AI (Ollama / LM Studio):** These run on your machine, not inside the container. Set `base_url` to use `host.docker.internal`:
+> ```yaml
+> ai:
+>   provider: ollama
+>   base_url: http://host.docker.internal:11434/v1
+> ```
 
 1. Go to **Analyse**.
 2. Paste your CV into the **Your CV** textarea.
 3. Select your AI provider and enter your API key.
-4. Optionally adjust the **Scoring fields** and **System prompt** to match your preferences.
+4. Optionally edit the scoring criteria and instructions for the AI.
 5. Click **Save settings**.
 6. Click **Score new jobs** to score all unscored jobs, or **Re-score all** to re-run everything.
 
@@ -92,7 +96,7 @@ This fetches the full job description for each listing (one HTTP request per job
 
 ### Step 6 — Browse results
 
-Go to **Jobs**. Add score columns from the column picker and filter by minimum score to surface the best matches. Click any job title to open the full description and AI verdict. Triage jobs as **Saved**, **Dismissed**, or **New**.
+Go to **Jobs**. Click the columns icon to add score columns and filter by minimum score to surface the best matches. Click any job title to open the full description and the AI's summary. Triage jobs as **Saved**, **Dismissed**, or **New**.
 
 ---
 
