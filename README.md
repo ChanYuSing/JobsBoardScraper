@@ -71,28 +71,50 @@ Open `http://127.0.0.1:8001` in your browser.
 ### Configuring sources in the UI
 
 1. Go to **Sources**.
-2. Enter keywords (one per line —all terms are ANDed together).
+2. Enter keywords (one per line — all terms are ANDed together).
 3. Set location and any filters (date range, work type, etc.).
-4. Click **Save** —changes are written to `config.yaml` immediately.
-5. Click **—Run Now** to trigger a scrape for that source without waiting for the schedule.
+4. Click **Save** — changes are written to `config.yaml` immediately.
+5. Click **Run Now** to trigger a scrape for that source without waiting for the schedule.
 
 ### Setting a schedule
 
-1. Go to **Schedule —Run settings**.
+1. Go to **Schedule → Run settings**.
 2. Pick a time and days. Leave all days unchecked to run every day.
 3. Set the run order using the dropdowns.
-4. Click **Save settings**. The live scheduler is updated immediately —no restart required.
-5. Use **—Run All Now** to trigger a run immediately.
+4. Click **Save settings**. The live scheduler is updated immediately — no restart required.
+5. Use **Run All Now** to trigger a run immediately.
+
+### Typical workflow
+
+1. **Fetch** — pulls listing cards (title, company, salary). Run from the Sources page or Schedule page.
+2. **Enrich** — fetches the full description for each job (one request per listing). Must run before scoring.
+3. **Score** — sends each job's description + your CV to the AI. Only jobs with a description are scored.
+
+All three phases can be triggered manually from the UI or run automatically on a cron schedule.
+
+### Score Jobs badge
+
+The badge on the Analyse page shows the full breakdown:
+
+`N new · N total · N awaiting enrich · ⚠ N enrich errors · N no description`
+
+| State | Meaning |
+|---|---|
+| **new** | Have a description but not yet scored |
+| **total** | All non-dismissed jobs with a description (the scoring pool) |
+| **awaiting enrich** | Scraped but not yet enriched — run Enrich first |
+| **⚠ enrich errors** | Enrich was attempted but failed (network error, 403, etc.) — will be retried automatically on the next Enrich run |
+| **no description** | Enriched successfully but the listing had no description text — will be retried on the next Enrich run |
 
 ### AI scoring (Analyse page)
 
 1. Go to **Analyse**.
 2. Paste your CV in the **Your CV** textarea.
-3. Adjust the **Scoring fields** if needed —each field becomes a column in the Jobs table.
+3. Adjust the **Scoring fields** if needed — each field becomes a column in the Jobs table.
 4. Edit the **System prompt** to match your preferences.
 5. Click **Preview prompts** to verify the assembled prompt on a random job.
 6. Click **Save settings** to persist CV, fields, and prompt to `config.yaml`.
-7. Select an AI provider and enter your API key, then click **Score Each Job**.
+7. Select an AI provider and enter your API key, then click **Score new jobs** (unscored only) or **Re-score all**.
 
 Alternatively, enable **Auto-score** on the Schedule page to score new jobs automatically after each fetch+enrich cycle.
 
@@ -193,19 +215,47 @@ ai:
   fields:
     - name: skills_match
       type: int
-      description: How well the candidate's skills match what the role requires (1-10)
+      description: >-
+        How well the candidate's demonstrated skills and experience cover the role's
+        core technical and functional requirements. Score only against stated core
+        requirements — ignore nice-to-haves.
+        1–3: missing most core requirements;
+        4–6: meets some core requirements but has notable gaps;
+        7–10: meets most or all core requirements. (1-10)
     - name: seniority_fit
       type: int
-      description: How well the candidate's experience level matches the expected seniority (1-10)
+      description: >-
+        How well the candidate's experience level matches the seniority this role expects.
+        Penalise both under-qualification (likely rejection) and over-qualification
+        (likely boredom or mismatch). If the JD gives no explicit seniority signal,
+        infer from the depth of responsibilities described.
+        1–3: significantly mismatched in either direction;
+        4–6: roughly appropriate but with meaningful gap or excess;
+        7–10: well-matched level. (1-10)
     - name: growth_value
       type: int
-      description: How much this role benefits the candidate's career growth (1-10)
+      description: >-
+        Assuming the candidate secures and works this role, how much would it advance
+        their career, skills, or future opportunities? Score independently of hiring
+        probability — a reach role can still score 9. Consider: skill development,
+        company or industry prestige, scope of the role, and alignment with their
+        stated career direction.
+        1–3: little benefit or actively misaligned with their goals;
+        4–6: modest step, some relevant exposure;
+        7–10: meaningful accelerator — valuable skills, brand, or access. (1-10)
     - name: overall
       type: int
-      description: Overall recommendation —should the candidate apply? (1-10)
+      description: >-
+        Should the candidate apply? Synthesise skills match, seniority fit, and growth
+        value. A strong reach role with high growth value warrants a higher score than
+        an easy win with low value. A mismatch on role direction or industry is
+        sufficient to score low even if technical skills match.
+        1–3: do not apply; 4–6: apply if bandwidth allows; 7–10: strong apply. (1-10)
     - name: verdict
       type: str
-      description: One sentence —strongest reason to apply, or key concern that stops you
+      description: >-
+        One or two sentence sharp verdict. Include the strongest reason to apply OR
+        the key reason to hesitate.
 ```
 
 ### AI providers
