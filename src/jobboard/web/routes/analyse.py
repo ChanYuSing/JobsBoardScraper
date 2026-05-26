@@ -226,25 +226,30 @@ async def analyse_score(
             return JSONResponse({"error": "Scoring already in progress."}, status_code=409)
         _score_state.update(running=True, done=0, total=0, errors=0, message="")
 
-    cfg = load_config(CONFIG_PATH)
-    scored_ref = [0]
-    errors_ref = [0]
+    try:
+        cfg = load_config(CONFIG_PATH)
+        scored_ref = [0]
+        errors_ref = [0]
 
-    def _progress(done: int, total: int, errors: int) -> None:
-        scored_ref[0] = done - errors
-        errors_ref[0] = errors
+        def _progress(done: int, total: int, errors: int) -> None:
+            scored_ref[0] = done - errors
+            errors_ref[0] = errors
+            with _score_lock:
+                _score_state["done"]   = done
+                _score_state["total"]  = total
+                _score_state["errors"] = errors
+
+        task = enqueue_score(
+            CONFIG_PATH, cfg.storage.sqlite_path,
+            rescore=rescore,
+            progress_cb=_progress,
+            preset_name=preset_name,
+            preset_params=preset_params,
+        )
+    except Exception as exc:
         with _score_lock:
-            _score_state["done"]   = done
-            _score_state["total"]  = total
-            _score_state["errors"] = errors
-
-    task = enqueue_score(
-        CONFIG_PATH, cfg.storage.sqlite_path,
-        rescore=rescore,
-        progress_cb=_progress,
-        preset_name=preset_name,
-        preset_params=preset_params,
-    )
+            _score_state["running"] = False
+        return JSONResponse({"error": str(exc)[:500]}, status_code=500)
 
     def _finish_watcher() -> None:
         task.done_event.wait()

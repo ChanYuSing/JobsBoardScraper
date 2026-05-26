@@ -170,18 +170,17 @@ def _run_all(
                 log.warning("Run cancelled — stopping before fetch of %s", source)
                 return
             conn = connect(db_path)
-            if _queued_ids and (source, "fetch") in _queued_ids:
-                run_id = _queued_ids[(source, "fetch")]
-                if not mark_run_active(conn, run_id):
-                    log.info("[%s] fetch skipped — queued row %d was cancelled", source, run_id)
-                    conn.close()
-                    continue
-            else:
-                run_id = log_run_start(conn, source, "fetch")
-            log.info("[%s] fetch started  scheduler_run.id=%d", source, run_id)
-            inserted = updated = 0
-            cancelled = False
             try:
+                if _queued_ids and (source, "fetch") in _queued_ids:
+                    run_id = _queued_ids[(source, "fetch")]
+                    if not mark_run_active(conn, run_id):
+                        log.info("[%s] fetch skipped — queued row %d was cancelled", source, run_id)
+                        continue
+                else:
+                    run_id = log_run_start(conn, source, "fetch")
+                log.info("[%s] fetch started  scheduler_run.id=%d", source, run_id)
+                inserted = updated = 0
+                cancelled = False
                 adapter = build_adapter(source, cfg)
                 with adapter:
                     if hasattr(adapter, "search_paginated"):
@@ -239,17 +238,16 @@ def _run_all(
                 log.warning("Run cancelled — stopping before enrich of %s", source)
                 return
             conn = connect(db_path)
-            if _queued_ids and (source, "enrich") in _queued_ids:
-                run_id = _queued_ids[(source, "enrich")]
-                if not mark_run_active(conn, run_id):
-                    log.info("[%s] enrich skipped — queued row %d was cancelled", source, run_id)
-                    conn.close()
-                    continue
-            else:
-                run_id = log_run_start(conn, source, "enrich")
-            log.info("[%s] enrich started  scheduler_run.id=%d", source, run_id)
-            ok = err = 0
             try:
+                if _queued_ids and (source, "enrich") in _queued_ids:
+                    run_id = _queued_ids[(source, "enrich")]
+                    if not mark_run_active(conn, run_id):
+                        log.info("[%s] enrich skipped — queued row %d was cancelled", source, run_id)
+                        continue
+                else:
+                    run_id = log_run_start(conn, source, "enrich")
+                log.info("[%s] enrich started  scheduler_run.id=%d", source, run_id)
+                ok = err = 0
                 adapter = build_adapter(source, cfg)
                 if getattr(adapter, "enrich_inline", False):
                     log_run_finish(conn, run_id, status="ok", jobs_found=0)

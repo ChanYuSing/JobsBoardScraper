@@ -31,7 +31,7 @@ def list_runs(
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     rows = conn.execute(
         f"""
-        SELECT id, source, phase, started_at, finished_at,
+        SELECT id, source, phase, scope, started_at, finished_at,
                status,
                COALESCE(jobs_found,
                    (SELECT COUNT(*) FROM scheduler_run_job srj WHERE srj.run_id = sr.id)
