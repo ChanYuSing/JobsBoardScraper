@@ -306,7 +306,9 @@ def jobs_export(
                 score_filters[key[len("score_min_"):]] = int(val)
             except ValueError:
                 pass
-    jobs, _ = list_jobs(
+
+    # Step 1: use existing filter logic to get the ordered (source, job_id, triage) list.
+    base_jobs, _ = list_jobs(
         conn,
         keyword=keyword, source=source,
         date_from=date_from, date_to=date_to,
@@ -318,19 +320,40 @@ def jobs_export(
         first_seen_to=first_seen_to,
         triage=triage,
         sort_by=sort_by, sort_dir=sort_dir,
-        page=1, page_size=50_000,
+        page=1, page_size=2**31 - 1,
         score_field_names=set(),
         score_filters=score_filters or None,
         run_id=run_id,
     )
-    _SKIP = {"description_html"}
-    clean = [{k: v for k, v in job.items() if k not in _SKIP} for job in jobs]
+
+    # Only personal data is excluded: triage_status (never in source tables) and
+    # AI scores (never joined). Everything else in the source tables is exported.
+    order_index = {(j["source"], j["job_id"]): i for i, j in enumerate(base_jobs)}
+
+    full_jobs: list[dict] = []
+    for src, table in _SOURCE_TABLE.items():
+        ids = [j["job_id"] for j in base_jobs if j["source"] == src]
+        if not ids:
+            continue
+        # Chunk to stay under SQLite's bound-parameter limit (32766 in SQLite ≥3.32)
+        for start in range(0, len(ids), 10_000):
+            chunk = ids[start : start + 10_000]
+            ph = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                f'SELECT * FROM "{table}" WHERE job_id IN ({ph})', chunk
+            ).fetchall():
+                d = dict(row)
+                d["source"] = src
+                full_jobs.append(d)
+
+    full_jobs.sort(key=lambda j: order_index.get((j["source"], j["job_id"]), 0))
+
     payload = json.dumps(
         {
             "version": 1,
             "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "total": len(clean),
-            "jobs": clean,
+            "total": len(full_jobs),
+            "jobs": full_jobs,
         },
         default=str,
         ensure_ascii=False,
