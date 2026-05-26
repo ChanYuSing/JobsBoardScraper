@@ -165,4 +165,76 @@
   });
 })();
 </script>
+
+<style>
+.import-drop-zone {
+  border: 2px dashed var(--pico-muted-border-color);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-align: center;
+  color: var(--pico-muted-color);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.import-drop-zone:hover,
+.import-drop--over {
+  border-color: var(--pico-primary);
+  background: color-mix(in srgb, var(--pico-primary) 6%, transparent);
+}
+</style>
+
+<article id="import-article">
+  <header><strong>Import Jobs</strong></header>
+  <p class="source-hint">
+    Import jobs from a <code>.json</code> export file.
+    Jobs matched by source&nbsp;+&nbsp;ID are never overwritten — only genuinely new ones are inserted.
+    Saved/dismissed status is only applied when no local status exists for that job.
+  </p>
+  <div id="import-drop-zone" class="import-drop-zone">
+    <input type="file" id="import-file-input" accept=".json" hidden/>
+    <p style="margin:0">
+      Drop a <code>.json</code> export file here, or
+      <a href="#" onclick="event.preventDefault(); document.getElementById('import-file-input').click()">browse</a>
+    </p>
+  </div>
+  <p id="import-result" hidden style="margin-top:0.6rem;margin-bottom:0"></p>
+</article>
+
+<script>
+(function () {
+  var zone   = document.getElementById('import-drop-zone');
+  var fileIn = document.getElementById('import-file-input');
+  var result = document.getElementById('import-result');
+
+  function doImport(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    result.hidden    = false;
+    result.style.color = '';
+    result.textContent = 'Importing\u2026';
+    fetch('/jobs/import', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        result.textContent = data.error || data.message;
+        result.style.color = data.error ? 'var(--pico-del-color)' : 'var(--pico-ins-color)';
+      })
+      .catch(function (e) {
+        result.textContent = 'Upload failed: ' + e;
+        result.style.color = 'var(--pico-del-color)';
+      });
+  }
+
+  fileIn.addEventListener('change', function () {
+    if (fileIn.files[0]) doImport(fileIn.files[0]);
+    fileIn.value = '';
+  });
+  zone.addEventListener('dragover',  function (e) { e.preventDefault(); zone.classList.add('import-drop--over'); });
+  zone.addEventListener('dragleave', function ()  { zone.classList.remove('import-drop--over'); });
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    zone.classList.remove('import-drop--over');
+    if (e.dataTransfer.files[0]) doImport(e.dataTransfer.files[0]);
+  });
+})();
+</script>
 {% endblock %}

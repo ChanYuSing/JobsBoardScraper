@@ -1,12 +1,13 @@
 """Jobs routes."""
 from __future__ import annotations
 
+import json
 import sqlite3
-from datetime import date as _date
+from datetime import date as _date, datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from ..deps import get_db, templates
 from ..services.analyse import get_field_defs
@@ -30,6 +31,56 @@ def _days_ago(date_str: str | None) -> str | None:
         return f"{delta} days ago"
     except Exception:
         return None
+
+
+_SOURCE_TABLE: dict[str, str] = {
+    "jobsdb":         "job_jobsdb",
+    "linkedin_guest": "job_linkedin",
+}
+_IMPORT_META = frozenset({"triage_status", "source"})
+
+
+def _import_job(
+    conn: sqlite3.Connection,
+    job: dict,
+    table_cols: dict[str, set[str]],
+) -> str:
+    """Insert one job from an import payload.
+
+    Returns 'inserted', 'status_only', or 'skipped'.
+    Existing jobs (matched by source + job_id) are never overwritten.
+    """
+    source  = job.get("source")
+    job_id  = job.get("job_id")
+    triage  = job.get("triage_status", "new")
+    table   = _SOURCE_TABLE.get(source)
+    allowed = table_cols.get(table, set())
+    if not table or not job_id or not allowed:
+        return "skipped"
+    row = {k: v for k, v in job.items() if k not in _IMPORT_META and k in allowed}
+    if not row or "job_id" not in row:
+        return "skipped"
+    cols  = ", ".join(f'"{c}"' for c in row)
+    marks = ", ".join("?" * len(row))
+    conn.execute(
+        f"INSERT OR IGNORE INTO {table} ({cols}) VALUES ({marks})",
+        list(row.values()),
+    )
+    was_inserted = conn.execute("SELECT changes()").fetchone()[0] > 0
+    status_added = False
+    if triage in ("saved", "dismissed"):
+        conn.execute(
+            "INSERT OR IGNORE INTO job_status (source, job_id, status, marked_at)"
+            " VALUES (?, ?, ?, datetime('now'))",
+            (source, job_id, triage),
+        )
+        status_added = conn.execute("SELECT changes()").fetchone()[0] > 0
+    if was_inserted:
+        return "inserted"
+    if status_added:
+        return "status_only"
+    return "skipped"
+
 
 router = APIRouter()
 
@@ -225,3 +276,118 @@ async def mark_ajax(
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"status": status})
+
+
+@router.get("/jobs/export.json")
+def jobs_export(
+    request: Request,
+    keyword: str = "",
+    source: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    work_type: list[str] = Query(default=[]),
+    company: str = "",
+    location_kw: str = "",
+    classification: str = "",
+    subclassification_kw: str = "",
+    first_seen_from: str = "",
+    first_seen_to: str = "",
+    triage: str = "",
+    sort_by: str = "",
+    sort_dir: str = "desc",
+    run_id: int = 0,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    # Mirror score_min_* filters from the query string (same as jobs_page)
+    score_filters: dict[str, int] = {}
+    for key, val in request.query_params.multi_items():
+        if key.startswith("score_min_"):
+            try:
+                score_filters[key[len("score_min_"):]] = int(val)
+            except ValueError:
+                pass
+    jobs, _ = list_jobs(
+        conn,
+        keyword=keyword, source=source,
+        date_from=date_from, date_to=date_to,
+        work_type=work_type,
+        company=company, location_kw=location_kw,
+        classification=classification,
+        subclassification_kw=subclassification_kw,
+        first_seen_from=first_seen_from,
+        first_seen_to=first_seen_to,
+        triage=triage,
+        sort_by=sort_by, sort_dir=sort_dir,
+        page=1, page_size=50_000,
+        score_field_names=set(),
+        score_filters=score_filters or None,
+        run_id=run_id,
+    )
+    _SKIP = {"description_html"}
+    clean = [{k: v for k, v in job.items() if k not in _SKIP} for job in jobs]
+    payload = json.dumps(
+        {
+            "version": 1,
+            "exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "total": len(clean),
+            "jobs": clean,
+        },
+        default=str,
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="jobs-export.json"'},
+    )
+
+
+@router.post("/jobs/import")
+async def jobs_import(
+    file: UploadFile = File(...),
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    raw = await file.read()
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JSONResponse({"error": "Invalid file — expected a JSON export."}, status_code=400)
+    if not isinstance(data, dict) or not isinstance(data.get("jobs"), list):
+        return JSONResponse(
+            {"error": "Unrecognised format — missing 'jobs' list."},
+            status_code=400,
+        )
+    table_cols: dict[str, set[str]] = {
+        tbl: {r[1] for r in conn.execute(f"PRAGMA table_info({tbl})").fetchall()}
+        for tbl in _SOURCE_TABLE.values()
+    }
+    inserted = skipped = status_only = errors = 0
+    for i, job in enumerate(data["jobs"]):
+        try:
+            result = _import_job(conn, job, table_cols)
+            if result == "inserted":
+                inserted += 1
+            elif result == "status_only":
+                status_only += 1
+            else:
+                skipped += 1
+        except Exception:
+            errors += 1
+        if i % 500 == 499:
+            conn.commit()
+    conn.commit()
+    parts = [f"{inserted} new job{'s' if inserted != 1 else ''} imported"]
+    if skipped:
+        parts.append(f"{skipped} already existed")
+    if status_only:
+        parts.append(f"{status_only} status update{'s' if status_only != 1 else ''}")
+    if errors:
+        parts.append(f"{errors} error{'s' if errors != 1 else ''}")
+    return JSONResponse({
+        "ok": True,
+        "inserted": inserted,
+        "skipped": skipped,
+        "status_only": status_only,
+        "errors": errors,
+        "message": " · ".join(parts),
+    })

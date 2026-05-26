@@ -89,9 +89,16 @@
     {{ total }} result{{ 's' if total != 1 }}
     {% if active_filter_count > 0 %}&ensp;·&ensp;<strong>{{ active_filter_count }} filter{{ 's' if active_filter_count != 1 }} active</strong>{% endif %}
   </span>
-  {% if active_filter_count > 0 %}
-    <a href="/jobs?cols={{ cols_param }}&triage={{ f_triage }}&sort_by={{ f_sort_by }}&sort_dir={{ f_sort_dir }}" class="status-bar__clear">✕ Clear filters</a>
-  {% endif %}
+  <span style="display:flex;gap:0.75rem;align-items:center">
+    {% if active_filter_count > 0 %}
+      <a href="/jobs?cols={{ cols_param }}&triage={{ f_triage }}&sort_by={{ f_sort_by }}&sort_dir={{ f_sort_dir }}" class="status-bar__clear">✕ Clear filters</a>
+    {% endif %}
+    {% if total > 0 %}
+      <a href="#" class="status-bar__clear"
+         onclick="event.preventDefault(); window.location='/jobs/export.json'+window.location.search"
+         title="Download current view as JSON">⬇ Export {{ total }} job{{ 's' if total != 1 }}</a>
+    {% endif %}
+  </span>
 </div>
 
 {# ══ MAIN FORM (table + popups) ══ #}
