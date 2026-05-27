@@ -17,16 +17,17 @@ JOBSDB_FIELDS: list[dict[str, Any]] = [
     {"key": "enabled",          "label": "Enabled",          "type": "toggle"},
     {"key": "keywords",         "label": "Keywords",         "type": "textarea", "hint": "AND search — blank = all jobs"},
     {"key": "location",         "label": "Location",         "type": "text",   "hint": "e.g. Hong Kong SAR"},
-    {"key": "daterange",        "label": "Date range (days)","type": "select", "options": ["", "1", "3", "7", "14", "31"], "hint": "blank = all time"},
+    {"key": "daterange",        "label": "Date range",       "type": "select", "options": [("", ""), ("1", "1 day"), ("3", "3 days"), ("7", "1 week"), ("14", "2 weeks"), ("31", "1 month")], "hint": "blank = all time"},
     {"key": "work_arrangement", "label": "Work arrangement", "type": "select", "options": ["", "on-site", "hybrid", "remote"], "hint": "blank = all"},
     {"key": "work_type",        "label": "Work type",        "type": "select", "options": ["", "full-time", "part-time", "contract", "casual", "internship"], "hint": "blank = all"},
-    {"key": "classification",   "label": "Classification",    "type": "cls-picker",     "hint": "Tick industries to filter — leave all unticked to search all"},
-    {"key": "subclassification","label": "Sub-classification","type": "cls-picker-sub"},
     {"key": "salary_range",     "label": "Salary range",     "type": "text",   "hint": "e.g. 30000-60000 (monthly HKD)"},
     {"key": "salary_type",      "label": "Salary type",      "type": "select", "options": ["", "Monthly", "Annual"], "hint": "blank = all"},
-    {"key": "sort_mode",        "label": "Sort",             "type": "select", "options": ["", "ListDate", "Relevance"], "hint": "blank = default (Relevance)"},
+    {"key": "classification",   "label": "Classification",    "type": "cls-picker",     "hint": "Tick industries to filter — leave all unticked to search all"},
+    {"key": "subclassification","label": "Sub-classification","type": "cls-picker-sub"},
+    {"key": "_div_crawler",     "label": "Crawler settings",  "type": "divider"},
+    {"key": "sort_mode",        "label": "Sort",             "type": "select", "options": [("", ""), ("ListDate", "Most recent"), ("Relevance", "Most relevant")], "hint": "blank = most relevant"},
     {"key": "page_size",        "label": "Page size",        "type": "number"},
-    {"key": "start_page",       "label": "Start page",       "type": "number", "hint": "resume from page N (1 = start from beginning)"},
+    {"key": "start_page",       "label": "Start page",       "type": "number", "hint": "1 = from beginning"},
     {"key": "max_pages",        "label": "Max pages",        "type": "number", "hint": "0 = no cap"},
 ]
 
@@ -34,16 +35,16 @@ LINKEDIN_FIELDS: list[dict[str, Any]] = [
     {"key": "enabled",          "label": "Enabled",          "type": "toggle"},
     {"key": "keywords",         "label": "Keywords",         "type": "textarea", "hint": "AND search — required by LinkedIn"},
     {"key": "location",         "label": "Location",         "type": "text",   "hint": "e.g. Hong Kong"},
-    {"key": "hours_old",        "label": "Hours old",        "type": "number", "hint": "e.g. 720 = last 30 days; blank = all time"},
+    {"key": "geo_id",           "label": "Location ID",      "type": "text",   "hint": "Optional numeric geoId — overrides Location text above"},
+    {"key": "hours_old",        "label": "Posted within (hrs)", "type": "number", "hint": "e.g. 720 = last 30 days; blank = all time"},
     {"key": "job_type",         "label": "Job type",         "type": "select",
      "options": ["", "fulltime", "parttime", "contract", "temporary", "internship", "volunteer", "other"],
      "hint": "blank = all"},
-    {"key": "is_remote",        "label": "Remote",           "type": "select", "options": ["", "true", "false", "hybrid"], "hint": "blank = all"},
+    {"key": "is_remote",        "label": "Work arrangement",  "type": "select", "options": [("", ""), ("true", "Remote"), ("hybrid", "Hybrid"), ("false", "On-site")], "hint": "blank = all"},
+    {"key": "easy_apply",       "label": "Easy Apply only",  "type": "select", "options": [("", ""), ("true", "Yes"), ("false", "No")], "hint": "blank = all"},
+    {"key": "sort_by_date",     "label": "Sort",             "type": "select", "options": [("", ""), ("true", "Most recent"), ("false", "Most relevant")], "hint": "blank = most relevant"},
     {"key": "experience_level", "label": "Experience level", "type": "multiselect",
      "options": [("1","Internship"),("2","Entry"),("3","Associate"),("4","Mid-Senior"),("5","Director"),("6","Executive")]},
-    {"key": "easy_apply",       "label": "Easy Apply only",  "type": "select", "options": ["", "true", "false"], "hint": "blank = all"},
-    {"key": "sort_by_date",     "label": "Sort by date",     "type": "select", "options": ["", "true", "false"], "hint": "blank = relevance sort"},
-    {"key": "geo_id",           "label": "Geo ID",           "type": "text",   "hint": "Optional: LinkedIn numeric geoId for a specific district; leave blank to use Location text above"},
     {"key": "industry_id",      "label": "Industry",         "type": "multiselect",
      "options": [(str(k), v) for k, v in sorted(INDUSTRIES.items(), key=lambda kv: kv[1])],
      "hint": "Leave all unticked to search all industries"},
@@ -65,6 +66,8 @@ def _cfg_to_display(cfg_obj: Any) -> dict[str, str]:
             out[key] = "\n".join(str(v) for v in val) if key == "keywords" else ",".join(str(v) for v in val)
         elif val is None:
             out[key] = ""
+        elif isinstance(val, bool):
+            out[key] = "true" if val else "false"
         else:
             out[key] = str(val)
     return out
@@ -128,6 +131,7 @@ def save_source(config_path: str, source: str, form: dict[str, str]) -> None:
     coerced = {
         f["key"]: _coerce_value(f["key"], form.get(f["key"], ""), fields)
         for f in fields
+        if f["type"] != "divider"
     }
 
     # ── validation ──────────────────────────────────────────────────────────

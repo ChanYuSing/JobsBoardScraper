@@ -29,7 +29,7 @@
     {# ── enabled toggle at top ── #}
     <label class="source-toggle">
       <input type="checkbox" name="enabled" value="true" role="switch"
-             {% if values.get('enabled','True') == 'True' %}checked{% endif %}/>
+             {% if values.get('enabled','true') in ('true','True') %}checked{% endif %}/>
       <span>Enabled</span>
     </label>
 
@@ -40,7 +40,7 @@
         {% elif f.type == 'toggle' %}
           <label class="source-toggle--inline">
             <input type="checkbox" name="{{ f.key }}" value="true" role="switch"
-                   {% if values.get(f.key,'') == 'True' %}checked{% endif %}/>
+                   {% if values.get(f.key,'') in ('true','True') %}checked{% endif %}/>
             {{ f.label }}
           </label>
         {% elif f.type == 'textarea' %}
@@ -58,7 +58,7 @@
             <p class="source-field__label">{{ f.label }}</p>
             {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
             {% set cur_vals = values.get(f.key, '').split(',') %}
-            <div class="chip-row">
+            <div class="chip-row{% if f.options|length > 12 %} chip-row--scroll{% endif %}">
               {% for val, lbl in f.options %}
               <span class="chip-item">
                 <input type="checkbox" id="{{ f.key }}_{{ val }}" name="{{ f.key }}" value="{{ val }}"
@@ -82,6 +82,11 @@
                    style="max-height:340px;overflow-y:auto;border:1px solid var(--pico-muted-border-color);border-radius:4px;margin-top:0.4rem"></div>
             </div>
           </div>
+        {% elif f.type == 'divider' %}
+          <div class="source-divider">
+            {% if f.label %}<span class="source-divider__label">{{ f.label }}</span>{% endif %}
+            <span class="source-divider__line"></span>
+          </div>
         {% elif f.type == 'cls-picker-sub' %}
           {# rendered inside cls-picker above — skip #}
         {% elif f.type == 'select' %}
@@ -90,10 +95,17 @@
             {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
             <select name="{{ f.key }}">
               {% for opt in f.options %}
-                <option value="{{ opt }}"
-                        {% if values.get(f.key,'') == opt %}selected{% endif %}>
-                  {{ opt if opt else '— all —' }}
-                </option>
+                {% if opt is string %}
+                  <option value="{{ opt }}"
+                          {% if values.get(f.key,'') == opt %}selected{% endif %}>
+                    {{ opt if opt else '— all —' }}
+                  </option>
+                {% else %}
+                  <option value="{{ opt[0] }}"
+                          {% if values.get(f.key,'') == opt[0] %}selected{% endif %}>
+                    {{ opt[1] if opt[1] else '— all —' }}
+                  </option>
+                {% endif %}
               {% endfor %}
             </select>
           </label>
