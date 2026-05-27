@@ -77,8 +77,9 @@ if __name__ == "__main__":
     threading.Thread(target=_open_browser, daemon=True).start()
 
     import uvicorn
+    from jobboard.web.main import app  # import directly so PyInstaller's frozen importer handles it
     uvicorn.run(
-        "jobboard.web.main:app",
+        app,
         host="127.0.0.1",
         port=8001,
         log_level="warning",
