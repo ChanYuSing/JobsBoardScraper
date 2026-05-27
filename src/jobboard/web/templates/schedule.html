@@ -145,7 +145,7 @@
 
 </div>
 <div class="sched-save-row">
-  <button type="submit" class="sched-save-btn">Save settings</button>
+  <span id="sched-save-status" class="source-save-status" aria-live="polite"></span>
 </div>
 </form>
 
@@ -159,5 +159,39 @@
     });
   }
 })();
+
+// ── Auto-save ─────────────────────────────────────────────────────────────
+var _schedSaveTimer = null;
+function autoSaveNow() {
+  clearTimeout(_schedSaveTimer);
+  doSchedSave();
+}
+function autoSaveLater() {
+  clearTimeout(_schedSaveTimer);
+  _schedSaveTimer = setTimeout(doSchedSave, 1000);
+}
+
+async function doSchedSave() {
+  var statusEl = document.getElementById('sched-save-status');
+  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'source-save-status'; }
+  try {
+    var form = document.querySelector('form[action="/schedule/save-all"]');
+    var resp = await fetch(form.action, { method: 'POST', body: new FormData(form), redirect: 'follow' });
+    if (resp.ok) {
+      if (statusEl) {
+        statusEl.textContent = '\u2713 Saved';
+        statusEl.className = 'source-save-status source-save-status--ok';
+        setTimeout(function () { statusEl.textContent = ''; }, 2000);
+      }
+    } else {
+      if (statusEl) { statusEl.textContent = '\u26a0 Save failed'; statusEl.className = 'source-save-status source-save-status--error'; }
+    }
+  } catch(e) {
+    if (statusEl) { statusEl.textContent = '\u26a0 Save error'; statusEl.className = 'source-save-status source-save-status--error'; }
+  }
+}
+
+document.querySelector('form[action="/schedule/save-all"]').addEventListener('change', autoSaveNow);
+document.querySelector('form[action="/schedule/save-all"]').addEventListener('input',  autoSaveLater);
 </script>
 {% endblock %}

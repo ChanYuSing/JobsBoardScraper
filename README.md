@@ -288,18 +288,35 @@ ai:
 
 ### AI providers
 
-| Provider key | Endpoint | Auth | Notes |
-|---|---|---|---|
-| `ollama` | `http://localhost:11434/v1` | None | Local, free |
-| `lmstudio` | `http://localhost:1234/v1` | None | Local, free |
-| `openai` | `https://api.openai.com/v1` | API key | GPT-4o, GPT-4o-mini |
-| `grok` | `https://api.x.ai/v1` | API key | xAI Grok models |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | API key | OpenAI-compat endpoint |
-| `deepseek` | `https://api.deepseek.com` | API key | DeepSeek V3/V4 |
-| `anthropic` | `https://api.anthropic.com` | API key | Claude Sonnet 4 / Haiku |
-| `openai_compat` | *(set base_url manually)* | Optional | Any OpenAI-compatible API |
+| Provider | `provider` key | Cost | Recommended model | Get API key |
+|---|---|---|---|---|
+| **Ollama** (local) | `ollama` | Free | `llama3.2` | [ollama.com/download](https://ollama.com/download) |
+| **LM Studio** (local) | `lmstudio` | Free | any GGUF | [lmstudio.ai](https://lmstudio.ai) |
+| **Google Gemini** | `gemini` | Free tier available | `gemini-2.0-flash` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
+| **DeepSeek** | `deepseek` | Very cheap | `deepseek-chat` | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
+| **OpenAI** | `openai` | Pay-per-use | `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Anthropic** | `anthropic` | Pay-per-use | `claude-haiku-4-5` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| **xAI Grok** | `grok` | Pay-per-use | `grok-4-1-fast-non-reasoning` | [console.x.ai](https://console.x.ai/) |
+| **Custom** | `openai_compat` | — | depends | set `base_url` manually |
 
-API keys can be set via the `AI_API_KEY` environment variable, per-provider in the `api_keys` dict, or via the Analyse page UI (which stores them in `api_keys`).
+API keys can be entered via the **Analyse page UI**, set as the `AI_API_KEY` environment variable, or written directly into `config.yaml` under `api_key`.
+
+#### Local AI setup (no API key needed)
+
+**Ollama** — runs models entirely on your machine:
+
+```sh
+# 1. Install from https://ollama.com/download
+# 2. Pull a model:
+ollama pull llama3.2       # ~2 GB — fast, good for most scoring tasks
+ollama pull llama3.1:8b    # ~5 GB — better quality
+```
+
+Then set `provider: ollama` in the Analyse page. No API key required.
+
+**LM Studio** — download from [lmstudio.ai](https://lmstudio.ai), find and load any GGUF model, then start the local server (Developer tab → Start Server). Set `provider: lmstudio` in the Analyse page. No API key required.
+
+> **Docker users:** Ollama and LM Studio run on your host, not inside the container. In the Analyse page, set Base URL to `http://host.docker.internal:11434/v1` (Ollama) or `http://host.docker.internal:1234/v1` (LM Studio).
 
 ---
 

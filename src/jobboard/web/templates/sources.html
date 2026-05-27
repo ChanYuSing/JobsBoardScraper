@@ -12,20 +12,15 @@
 <article class="source-card">
   <header class="source-card__header">
     <span class="source-card__name">{{ display_name }}</span>
+    <span id="save-status-{{ name }}" class="source-save-status" aria-live="polite"></span>
     <div class="source-card__actions">
-      <form method="post" action="/sources/{{ name }}/fetch">
-        <button type="submit" class="secondary outline source-action-btn" title="Fetch new job cards only">Fetch</button>
-      </form>
-      <form method="post" action="/sources/{{ name }}/enrich">
-        <button type="submit" class="secondary outline source-action-btn" title="Enrich job detail for existing cards">Enrich</button>
-      </form>
-      <form method="post" action="/sources/{{ name }}/run">
-        <button type="submit" class="source-action-btn" title="Fetch + Enrich (full run)">▶ Run Now</button>
-      </form>
+      <button type="button" class="secondary outline source-action-btn" title="Save settings then fetch new job cards" onclick="saveAndRun('{{ name }}', 'fetch')">Fetch</button>
+      <button type="button" class="secondary outline source-action-btn" title="Save settings then enrich job details" onclick="saveAndRun('{{ name }}', 'enrich')">Enrich</button>
+      <button type="button" class="source-action-btn" title="Save settings then fetch + enrich" onclick="saveAndRun('{{ name }}', 'run')">&#9654; Run Now</button>
     </div>
   </header>
 
-  <form method="post" action="/sources/{{ name }}/save">
+  <form method="post" action="/sources/{{ name }}/save" id="src-form-{{ name }}">
     {# ── enabled toggle at top ── #}
     <label class="source-toggle">
       <input type="checkbox" name="enabled" value="true" role="switch"
@@ -120,7 +115,6 @@
       {% endfor %}
     </div>
 
-    <button type="submit" class="source-save-btn">Save</button>
   </form>
 </article>
 {% endfor %}
@@ -136,6 +130,7 @@
     function syncHidden() {
       var chips = widget.querySelectorAll('.tag-input__chip');
       hidden.value = Array.from(chips).map(function (c) { return c.dataset.value; }).join('\n');
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function removeChip(chip) {
@@ -192,9 +187,77 @@
     });
   });
 })();
+
+// ── Auto-save ─────────────────────────────────────────────────────────────
+var _autoSaveTimers = {};
+
+function autoSaveNow(srcName) {
+  clearTimeout(_autoSaveTimers[srcName]);
+  doAutoSave(srcName);
+}
+
+function autoSaveLater(srcName) {
+  clearTimeout(_autoSaveTimers[srcName]);
+  var statusEl = document.getElementById('save-status-' + srcName);
+  if (statusEl) statusEl.textContent = '';
+  _autoSaveTimers[srcName] = setTimeout(function () { doAutoSave(srcName); }, 1000);
+}
+
+async function doAutoSave(srcName) {
+  var form = document.getElementById('src-form-' + srcName);
+  var statusEl = document.getElementById('save-status-' + srcName);
+  if (statusEl) { statusEl.textContent = 'Saving\u2026'; statusEl.className = 'source-save-status'; }
+  try {
+    var resp = await fetch('/sources/' + srcName + '/save', { method: 'POST', body: new FormData(form) });
+    if (resp.url && resp.url.indexOf('flash_type=error') !== -1) {
+      var errMsg = decodeURIComponent(new URL(resp.url).searchParams.get('flash') || 'Save error');
+      if (statusEl) { statusEl.textContent = '\u26a0 ' + errMsg; statusEl.className = 'source-save-status source-save-status--error'; }
+    } else {
+      if (statusEl) {
+        statusEl.textContent = '\u2713 Saved';
+        statusEl.className = 'source-save-status source-save-status--ok';
+        setTimeout(function () { statusEl.textContent = ''; }, 2000);
+      }
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = '\u26a0 Error'; statusEl.className = 'source-save-status source-save-status--error'; }
+  }
+}
+
+document.querySelectorAll('[id^="src-form-"]').forEach(function (form) {
+  var srcName = form.id.replace('src-form-', '');
+  form.addEventListener('change', function () { autoSaveNow(srcName); });
+  form.addEventListener('input',  function () { autoSaveLater(srcName); });
+});
+
+async function saveAndRun(srcName, action) {
+  var form = document.getElementById('src-form-' + srcName);
+  var actionBtns = form.closest('.source-card').querySelectorAll('.source-action-btn');
+  actionBtns.forEach(function(b) { b.disabled = true; });
+  try {
+    var saveResp = await fetch('/sources/' + srcName + '/save', {
+      method: 'POST',
+      body: new FormData(form)
+    });
+    if (saveResp.url && saveResp.url.indexOf('flash_type=error') !== -1) {
+      var url = new URL(saveResp.url);
+      alert('Save failed: ' + decodeURIComponent(url.searchParams.get('flash') || 'unknown error'));
+      return;
+    }
+    await fetch('/sources/' + srcName + '/' + action, { method: 'POST' });
+    window.location = '/runs';
+  } catch (e) {
+    alert('Error: ' + e);
+  } finally {
+    actionBtns.forEach(function(b) { b.disabled = false; });
+  }
+}
 </script>
 
 <style>
+.source-save-status { font-size: 0.78rem; color: var(--pico-muted-color); margin-left: 0.5rem; white-space: nowrap; flex-shrink: 0; }
+.source-save-status--ok    { color: #065f46; }
+.source-save-status--error { color: #991b1b; }
 .import-drop-zone {
   border: 2px dashed var(--pico-muted-border-color);
   border-radius: 8px;

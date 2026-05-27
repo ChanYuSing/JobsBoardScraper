@@ -194,12 +194,14 @@ def jobs_page(
     for _name, _val in score_filters.items():
         qs_parts[f"score_min_{_name}"] = _val
     page_qs = urlencode(qs_parts, doseq=True)
+    has_any_jobs = conn.execute("SELECT 1 FROM job_all LIMIT 1").fetchone() is not None
 
     return templates.TemplateResponse(
         request,
         "jobs.html",
         {
             "active": "jobs",
+            "has_any_jobs": has_any_jobs,
             "jobs": jobs,
             "total": total,
             "page": page,

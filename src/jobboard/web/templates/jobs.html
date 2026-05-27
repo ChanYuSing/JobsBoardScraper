@@ -212,7 +212,11 @@
   </div>
 
   {% if not jobs %}
+  {% if has_any_jobs %}
   <p class="no-results">No jobs match the current filters.</p>
+  {% else %}
+  <p class="no-results">No jobs yet. Go to <a href="/sources">Sources</a> to set your keywords and click <strong>▶ Run Now</strong> to fetch your first results.</p>
+  {% endif %}
   {% endif %}
 
   {# ═══════════════ FILTER POPUPS ═══════════════ #}

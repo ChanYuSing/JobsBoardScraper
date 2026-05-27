@@ -9,7 +9,7 @@
   {# ── cv ── #}
   <article>
     <header><strong>Your CV</strong></header>
-    <p class="source-hint">Paste your full CV or résumé. The AI reads this to assess how well each job matches your background and experience.</p>
+    <p class="source-hint">Paste your full CV or résumé. <strong>Required for scoring</strong> — the AI compares each job against your background and experience.</p>
     <textarea name="cv" rows="20" placeholder="Paste your CV / résumé here…">{{ ai.cv }}</textarea>
   </article>
 
@@ -57,7 +57,7 @@
   <article>
     <header><strong>System prompt</strong></header>
     <p class="source-hint">Instructions that guide the AI's scoring behaviour. Use this to express your job preferences — e.g. <em>"Strongly prefer roles that match my target industry and function. Penalise roles that are outside my area of interest."</em></p>
-    <textarea name="system_prompt" rows="12" placeholder="Optional instruction prepended to every request — e.g. 'You are a concise recruiter assistant…'">{{ ai.system_prompt }}</textarea>
+    <textarea name="system_prompt" rows="12" placeholder="Instructions for the AI — e.g. 'Penalise roles outside my target industry.'">{{ ai.system_prompt }}</textarea>
   </article>
 
   {# ── ai provider ── #}
@@ -190,8 +190,8 @@
   </article>
 
   <div class="analyse-actions">
-    <button type="button" onclick="saveSettings(this)">Save settings</button>
     <button type="button" class="secondary outline" onclick="openPreview()">Preview prompts</button>
+    <span id="analyse-save-status" class="source-save-status" aria-live="polite"></span>
   </div>
 
 </form>
@@ -243,7 +243,7 @@
     <p>This cannot be undone.</p>
     <footer>
       <button class="secondary outline" onclick="document.getElementById('confirm-delete-dialog').close()">Cancel</button>
-      <button id="confirm-delete-btn" onclick="saveSettings(null, true)">Delete and save</button>
+      <button id="confirm-delete-btn" onclick="saveSettings(true)">Delete and save</button>
     </footer>
   </article>
 </dialog>
@@ -360,6 +360,7 @@ function addFieldRow() {
     + '<input type="text" name="field_desc[]" value="" placeholder="What the AI should evaluate"/>'
     + '<button type="button" class="outline secondary field-remove-btn" onclick="removeFieldRow(this)">✕</button>';
   editor.appendChild(row);
+  autoSaveNow();
 }
 
 function formatFieldName(input) {
@@ -368,30 +369,68 @@ function formatFieldName(input) {
   input.setSelectionRange(pos, pos);
 }
 
+var _pendingDeleteRow   = null;  // { row, parent, next } — saved before DOM removal
+var _pendingConfirmData = null;  // formData that triggered confirm_required — reused on confirm
+
 function removeFieldRow(btn) {
-  btn.closest('.field-editor-row').remove();
+  const row = btn.closest('.field-editor-row');
+  _pendingDeleteRow = { row, parent: row.parentElement, next: row.nextSibling };
+  row.remove();
+  autoSaveNow();
 }
 
-async function saveSettings(btn, confirmed = false) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  const formData = new FormData(document.getElementById('analyse-form'));
-  if (confirmed) formData.set('confirmed', '1');
+var _analyseAutoSaveTimer = null;
+function autoSaveNow() {
+  clearTimeout(_analyseAutoSaveTimer);
+  saveSettings();
+}
+function autoSaveLater() {
+  clearTimeout(_analyseAutoSaveTimer);
+  _analyseAutoSaveTimer = setTimeout(saveSettings, 1000);
+}
+
+async function saveSettings(confirmed = false) {
+  clearTimeout(_analyseAutoSaveTimer);
+  const statusEl = document.getElementById('analyse-save-status');
+  let formData;
+  if (confirmed && _pendingConfirmData) {
+    formData = _pendingConfirmData;
+    formData.set('confirmed', '1');
+    _pendingConfirmData = null;
+  } else {
+    formData = new FormData(document.getElementById('analyse-form'));
+  }
+  if (statusEl) { statusEl.textContent = 'Saving…'; statusEl.className = 'source-save-status'; }
   try {
     const r = await fetch('/analyse/save', { method: 'POST', body: formData });
     const data = await r.json();
     if (data.confirm_required) {
+      // Restore the removed row so Cancel leaves the page visually consistent with saved state
+      if (_pendingDeleteRow) {
+        const { row, parent, next } = _pendingDeleteRow;
+        parent.insertBefore(row, next);
+        _pendingDeleteRow = null;
+      }
+      _pendingConfirmData = formData;  // keep for re-use with confirmed=1
+      if (statusEl) statusEl.textContent = '';
       const list = document.getElementById('confirm-delete-list');
       list.innerHTML = data.fields.map(f => `<li><code>${f}</code></li>`).join('');
       document.getElementById('confirm-delete-dialog').showModal();
     } else if (data.error) {
-      alert('Save failed: ' + data.error);
+      if (statusEl) { statusEl.textContent = '⚠ ' + data.error; statusEl.className = 'source-save-status source-save-status--error'; }
     } else {
-      window.location = '/analyse?flash=Settings+saved';
+      _pendingDeleteRow   = null;
+      _pendingConfirmData = null;
+      _cvDirty = false;
+      syncScoreBtns();
+      if (statusEl) {
+        statusEl.textContent = '✓ Saved';
+        statusEl.className = 'source-save-status source-save-status--ok';
+        setTimeout(function () { statusEl.textContent = ''; }, 2000);
+      }
     }
   } catch(e) {
-    alert('Save failed: ' + e);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save settings'; }
+    if (statusEl) { statusEl.textContent = '⚠ Save error'; statusEl.className = 'source-save-status source-save-status--error'; }
   }
 }
 
@@ -463,6 +502,13 @@ async function sendTest() {
 let _scorePoller = null;
 
 async function scoreAll(rescore) {
+  if (!document.querySelector('textarea[name="cv"]').value.trim() || _cvDirty) {
+    document.getElementById('score-progress-wrap').hidden = false;
+    document.getElementById('score-status-text').textContent = _cvDirty
+      ? 'Save settings before scoring.'
+      : 'Paste your CV above and save settings before scoring.';
+    return;
+  }
   const scoreBtn   = document.getElementById('score-btn');
   const rescoreBtn = document.getElementById('rescore-btn');
   const wrap       = document.getElementById('score-progress-wrap');
@@ -471,6 +517,7 @@ async function scoreAll(rescore) {
 
   scoreBtn.disabled   = true;
   rescoreBtn.disabled = true;
+  _isScoring = true;
   wrap.hidden = false;
   bar.value = 0;
   txt.textContent = 'Starting…';
@@ -490,12 +537,14 @@ async function scoreAll(rescore) {
     const data = await r.json();
     if (data.error) {
       txt.textContent = 'Error: ' + data.error;
-      scoreBtn.disabled = rescoreBtn.disabled = false;
+      _isScoring = false;
+      syncScoreBtns();
       return;
     }
   } catch(e) {
     txt.textContent = 'Failed to start: ' + e;
-    scoreBtn.disabled = rescoreBtn.disabled = false;
+    _isScoring = false;
+    syncScoreBtns();
     return;
   }
 
@@ -528,8 +577,8 @@ async function pollScoreStatus() {
       _scorePoller = null;
       bar.max = 1; bar.value = 1;
       txt.textContent = s.message || 'Done';
-      document.getElementById('score-btn').disabled    = false;
-      document.getElementById('rescore-btn').disabled  = false;
+      _isScoring = false;
+      syncScoreBtns();
       setTimeout(() => window.location.reload(), 800);
     }
   } catch(e) {
@@ -539,6 +588,33 @@ async function pollScoreStatus() {
   }
 }
 
+// ── CV guard ─────────────────────────────────────────────────────────────
+let _isScoring = false;
+let _cvDirty   = false;   // true when CV textarea changed but not yet saved
+
+function syncScoreBtns() {
+  if (_isScoring) return;
+  const hasCV      = document.querySelector('textarea[name="cv"]').value.trim().length > 0;
+  const readyScore = hasCV && !_cvDirty;
+  const tip = !hasCV   ? 'Paste your CV above, then save settings before scoring'
+            : _cvDirty ? 'Save settings before scoring'
+            : '';
+  ['score-btn', 'rescore-btn'].forEach(id => {
+    const el = document.getElementById(id);
+    el.disabled = !readyScore;
+    el.title    = tip;
+  });
+}
+document.querySelector('textarea[name="cv"]').addEventListener('input', function() {
+  _cvDirty = true;
+  syncScoreBtns();
+});
+syncScoreBtns();
+
+// Auto-save on any form change
+document.getElementById('analyse-form').addEventListener('change', autoSaveNow);
+document.getElementById('analyse-form').addEventListener('input',  autoSaveLater);
+
 // Resume poller if a task is already running when page loads
 (async () => {
   try {
@@ -547,6 +623,7 @@ async function pollScoreStatus() {
       document.getElementById('score-progress-wrap').hidden = false;
       document.getElementById('score-btn').disabled   = true;
       document.getElementById('rescore-btn').disabled = true;
+      _isScoring = true;
       startScorePoller();
     }
   } catch(_) {}

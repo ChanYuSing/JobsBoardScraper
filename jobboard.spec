@@ -60,6 +60,9 @@ a = Analysis(
         # pydantic v2 internals
         "pydantic_core",
         "pydantic.deprecated.class_validators",
+        # BeautifulSoup4 — used by the LinkedIn adapter; PyInstaller misses it
+        "bs4",
+        "bs4.builder._htmlparser",
     ],
     hookspath=[],
     hooksconfig={},

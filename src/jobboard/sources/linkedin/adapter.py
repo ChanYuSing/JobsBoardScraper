@@ -69,9 +69,12 @@ class LinkedInAdapter:
 
     def search(self) -> Iterator[LinkedInCard]:
         cfg = self._cfg
-        keywords: list[str] = list(cfg.keywords or [])
+        keywords: list[str] = [k for k in (cfg.keywords or []) if k and k.strip()]
         if not keywords:
-            keywords = [""]
+            raise ValueError(
+                "LinkedIn requires at least one keyword — go to Sources → LinkedIn "
+                "and add keywords before running."
+            )
 
         for term in keywords:
             log.info("[%s] searching term=%r location=%r", self.name, term, cfg.location)
