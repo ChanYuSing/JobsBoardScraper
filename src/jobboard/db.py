@@ -265,6 +265,8 @@ def _migrate_scheduler_run(conn: sqlite3.Connection) -> None:
 def _migrate_scope_column(conn: sqlite3.Connection) -> None:
     """Add scope column to scheduler_run if it doesn't exist yet."""
     col_map = {r[1] for r in conn.execute("PRAGMA table_info(scheduler_run)").fetchall()}
+    if not col_map:
+        return  # table doesn't exist yet; CREATE TABLE IF NOT EXISTS will handle it
     if "scope" not in col_map:
         conn.execute("ALTER TABLE scheduler_run ADD COLUMN scope TEXT")
         conn.commit()
