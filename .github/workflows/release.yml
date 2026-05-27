@@ -21,8 +21,8 @@ jobs:
             artifact: JobBoardScraper-windows.exe
             exe_src: dist/JobBoardScraper.exe
           - os: macos-latest
-            artifact: JobBoardScraper-macos
-            exe_src: dist/JobBoardScraper
+            artifact: JobBoardScraper-macos.zip
+            exe_src: dist/JobBoardScraper.app
           - os: ubuntu-latest
             artifact: JobBoardScraper-linux
             exe_src: dist/JobBoardScraper
@@ -44,9 +44,14 @@ jobs:
       - name: Build executable
         run: pyinstaller jobboard.spec
 
-      - name: Rename output
+      - name: Package output
         shell: bash
-        run: mv "${{ matrix.exe_src }}" "dist/${{ matrix.artifact }}"
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cd dist && zip -r JobBoardScraper-macos.zip JobBoardScraper.app
+          else
+            mv "${{ matrix.exe_src }}" "dist/${{ matrix.artifact }}"
+          fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

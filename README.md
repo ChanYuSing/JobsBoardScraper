@@ -15,16 +15,14 @@ Download the pre-built binary for your platform from the [Releases page](https:/
 | Platform | File |
 |---|---|
 | Windows | `JobBoardScraper-windows.exe` |
-| macOS | `JobBoardScraper-macos` |
+| macOS | `JobBoardScraper-macos.zip` |
 | Linux | `JobBoardScraper-linux` |
 
 - **Windows:** double-click `JobBoardScraper-windows.exe`
-- **macOS:** open Terminal, then run:
-  ```sh
-  xattr -c ~/Downloads/JobBoardScraper-macos   # remove macOS quarantine flag (required on first run)
-  chmod +x ~/Downloads/JobBoardScraper-macos
-  ~/Downloads/JobBoardScraper-macos
-  ```
+- **macOS:**
+  1. Unzip `JobBoardScraper-macos.zip`
+  2. **Right-click** `JobBoardScraper.app` → **Open** → **Open**
+  3. *(First time only — right-click is needed once to bypass the unverified developer warning. After that, double-click works normally.)*
 - **Linux:** open Terminal, then run:
   ```sh
   chmod +x ~/Downloads/JobBoardScraper-linux

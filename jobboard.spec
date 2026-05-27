@@ -11,6 +11,7 @@ Output:
 
 The GitHub Actions release workflow runs this automatically on every version tag.
 """
+import sys
 from PyInstaller.utils.hooks import collect_data_files
 
 # ---------------------------------------------------------------------------
@@ -70,23 +71,66 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name="JobBoardScraper",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,          # UPX compression can break some binaries; leave off by default
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=True,       # keep terminal window so users can see startup messages / errors
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
+if sys.platform == "darwin":
+    # macOS: produce a .app bundle (onedir mode) so users can right-click → Open
+    # from Finder without needing Terminal, chmod, or xattr.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],             # binaries/datas go into COLLECT, not embedded in EXE
+        name="JobBoardScraper",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=True,
+        disable_windowed_traceback=False,
+        argv_emulation=False,   # must stay False for server apps
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name="JobBoardScraper",
+    )
+    app = BUNDLE(
+        coll,
+        name="JobBoardScraper.app",
+        bundle_identifier="com.jobbboardscraper.app",
+        info_plist={
+            "NSHighResolutionCapable": True,
+            "CFBundleDisplayName": "JobBoardScraper",
+            "CFBundleShortVersionString": "1.0.0",
+        },
+    )
+else:
+    # Windows / Linux: single self-contained executable
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.datas,
+        [],
+        name="JobBoardScraper",
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,          # UPX compression can break some binaries; leave off by default
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=True,       # keep terminal window so users can see startup messages / errors
+        disable_windowed_traceback=False,
+        argv_emulation=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )

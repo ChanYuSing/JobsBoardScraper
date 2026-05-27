@@ -297,5 +297,6 @@ def sweep_orphan_runs(conn: sqlite3.Connection) -> None:
          WHERE status = 'queued'
         """,
     )
+    conn.commit()
 
 
