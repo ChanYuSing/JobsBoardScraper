@@ -409,7 +409,7 @@ async function saveSettings(confirmed = false) {
       if (_pendingDeleteRow) {
         const { row, parent, next } = _pendingDeleteRow;
         parent.insertBefore(row, next);
-        _pendingDeleteRow = null;
+        // Do NOT null _pendingDeleteRow here — we need it to re-remove the row if delete is confirmed
       }
       _pendingConfirmData = formData;  // keep for re-use with confirmed=1
       if (statusEl) statusEl.textContent = '';
@@ -419,6 +419,7 @@ async function saveSettings(confirmed = false) {
     } else if (data.error) {
       if (statusEl) { statusEl.textContent = '⚠ ' + data.error; statusEl.className = 'source-save-status source-save-status--error'; }
     } else {
+      if (_pendingDeleteRow) { _pendingDeleteRow.row.remove(); }
       _pendingDeleteRow   = null;
       _pendingConfirmData = null;
       _cvDirty = false;

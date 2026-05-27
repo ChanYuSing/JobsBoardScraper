@@ -6,6 +6,7 @@ import logging
 import random
 import re
 import sqlite3
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -384,6 +385,25 @@ def score_all_jobs(
 # ---------------------------------------------------------------------------
 
 def get_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Return total non-dismissed jobs and how many need scoring (missing ≥1 field).
+
+    Result is cached in-process for up to 60 s — these are informational
+    counters and don't need to be real-time with 70 k+ rows.
+    """
+    now = time.monotonic()
+    cached = _score_counts_cache
+    if cached["data"] is not None and now - cached["ts"] < 60:
+        return cached["data"]  # type: ignore[return-value]
+    result = _compute_score_job_counts(conn)
+    cached["data"] = result
+    cached["ts"] = now
+    return result
+
+
+_score_counts_cache: dict[str, Any] = {"data": None, "ts": 0.0}
+
+
+def _compute_score_job_counts(conn: sqlite3.Connection) -> dict[str, int]:
     """Return total non-dismissed jobs and how many need scoring (missing ≥1 field).
 
     "Scored" means every current field_def has a row in job_analysis — matching

@@ -177,7 +177,7 @@ async function doSchedSave() {
   try {
     var form = document.querySelector('form[action="/schedule/save-all"]');
     var resp = await fetch(form.action, { method: 'POST', body: new FormData(form), redirect: 'follow' });
-    if (resp.ok) {
+    if (resp.ok && (!resp.url || resp.url.indexOf('flash_type=error') === -1)) {
       if (statusEl) {
         statusEl.textContent = '\u2713 Saved';
         statusEl.className = 'source-save-status source-save-status--ok';

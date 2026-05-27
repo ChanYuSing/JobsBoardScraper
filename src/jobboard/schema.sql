@@ -55,7 +55,11 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     analysed_at TEXT NOT NULL,
     PRIMARY KEY (source, job_id, field_id)
 );
-CREATE INDEX IF NOT EXISTS idx_job_analysis_src_job ON job_analysis (source, job_id);
+CREATE INDEX IF NOT EXISTS idx_job_analysis_src_job   ON job_analysis (source, job_id);
+-- Speeds up the scored-count query (GROUP BY job_id filtered by source + field_id):
+CREATE INDEX IF NOT EXISTS idx_job_analysis_src_field ON job_analysis (source, field_id);
+-- Speeds up the dismissed anti-join (COALESCE filter on job_status):
+CREATE INDEX IF NOT EXISTS idx_job_status_src_status  ON job_status (source, status);
 
 -- Denormalised flat table for fast job list queries.
 -- Kept in sync with job_jobsdb and job_linkedin via triggers defined in each
