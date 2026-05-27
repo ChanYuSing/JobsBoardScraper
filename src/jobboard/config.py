@@ -91,6 +91,14 @@ class FieldCfg(BaseModel):
     description: str = ""
 
 
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are an expert career advisor. Evaluate job-candidate fit objectively "
+    "and strictly based on evidence in the CV and the job description — do not "
+    "infer or assume skills or experience that are not explicitly stated. "
+    "Be analytical and concise. Respond with valid JSON only, exactly as specified."
+)
+
+
 class AiCfg(BaseModel):
     provider: str = "ollama"     # openai | ollama | lmstudio | grok | gemini | openai_compat
     model: str = "llama3.2"
@@ -104,8 +112,13 @@ class AiCfg(BaseModel):
     reasoning_effort: str | None = None   # None | "low" | "medium" | "high" | "max"
     thinking_enabled: bool | None = None  # None = provider default; True/False = force on/off
     provider_params: dict[str, dict] = Field(default_factory=dict)  # per-provider param overrides
-    system_prompt: str = ""
+    system_prompt: str = _DEFAULT_SYSTEM_PROMPT
     cv: str = ""
+
+    @field_validator("system_prompt", mode="before")
+    @classmethod
+    def _default_system_prompt(cls, v: str) -> str:
+        return v if v and v.strip() else _DEFAULT_SYSTEM_PROMPT
     auto_score: bool = False
     auto_score_preset_names: list[str] = Field(default_factory=list)
     fields: list[FieldCfg] = Field(default_factory=list)
