@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from ..deps import CONFIG_PATH, templates
+from ..deps import CONFIG_PATH, get_config, templates
 from ..services.sources import SOURCE_FIELDS, get_sources, save_source
+from ...scheduler import enqueue_run
+from ...sources.jobsdb.classifications import CLASSIFICATIONS, SUBCLASSIFICATIONS
 
 router = APIRouter()
 
@@ -50,8 +52,6 @@ async def save(name: str, request: Request):
 @router.post("/sources/{name}/run")
 def run_now(name: str):
     """Queue fetch then enrich for one source."""
-    from ...scheduler import enqueue_run
-    from ..deps import CONFIG_PATH, get_config
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch", "enrich"])
     return RedirectResponse(f"/sources?flash=Fetch+%2B+enrich+queued+for+{name}.", status_code=303)
@@ -60,8 +60,6 @@ def run_now(name: str):
 @router.post("/sources/{name}/fetch")
 def fetch_now(name: str):
     """Queue fetch-only for one source."""
-    from ...scheduler import enqueue_run
-    from ..deps import CONFIG_PATH, get_config
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch"])
     return RedirectResponse(f"/sources?flash=Fetch+queued+for+{name}.", status_code=303)
@@ -70,8 +68,27 @@ def fetch_now(name: str):
 @router.post("/sources/{name}/enrich")
 def enrich_now(name: str):
     """Queue enrich-only for one source."""
-    from ...scheduler import enqueue_run
-    from ..deps import CONFIG_PATH, get_config
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["enrich"])
     return RedirectResponse(f"/sources?flash=Enrich+queued+for+{name}.", status_code=303)
+
+
+@router.get("/api/jobsdb/classifications")
+def jobsdb_classifications():
+    """Return hardcoded classification and sub-classification (id, name) pairs
+    for the JobsDB (SEEK) HK taxonomy.
+
+    No DB query — data is frozen at scrape time and served statically.
+    """
+    return JSONResponse({
+        "classifications": [
+            {"id": id_, "name": name}
+            for id_, name in sorted(CLASSIFICATIONS.items(), key=lambda kv: kv[1])
+        ],
+        "subclassifications": [
+            {"id": id_, "name": name, "parent_id": parent_id}
+            for id_, (name, parent_id) in sorted(
+                SUBCLASSIFICATIONS.items(), key=lambda kv: (kv[1][1], kv[1][0])
+            )
+        ],
+    })

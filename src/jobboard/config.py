@@ -50,7 +50,8 @@ class LinkedInCfg(SourceCfgBase):
     easy_apply: bool | None = None
     sort_by_date: bool | None = None
     geo_id: str | None = None
-    industry_id: int | None = None
+    industry_id: int | list[int] | None = None
+    job_function_id: str | list[str] | None = None
 
     @field_validator("keywords", mode="before")
     @classmethod

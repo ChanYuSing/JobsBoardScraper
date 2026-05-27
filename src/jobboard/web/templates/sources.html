@@ -68,6 +68,22 @@
               {% endfor %}
             </div>
           </div>
+        {% elif f.type == 'cls-picker' %}
+          <div class="source-field--full">
+            <p class="source-field__label">Classification &amp; Sub-classification</p>
+            <small class="source-hint">{{ f.hint }}</small>
+            <div class="cls-picker-widget"
+                 data-cls-field="classification"
+                 data-sub-field="subclassification"
+                 data-cls-vals="{{ values.get('classification', '') }}"
+                 data-sub-vals="{{ values.get('subclassification', '') }}">
+              <div class="cls-picker-status" style="font-size:0.85rem;color:var(--pico-muted-color);margin-top:0.4rem">Loading…</div>
+              <div class="cls-picker-tree" hidden
+                   style="max-height:340px;overflow-y:auto;border:1px solid var(--pico-muted-border-color);border-radius:4px;margin-top:0.4rem"></div>
+            </div>
+          </div>
+        {% elif f.type == 'cls-picker-sub' %}
+          {# rendered inside cls-picker above — skip #}
         {% elif f.type == 'select' %}
           <label>
             {{ f.label }}
@@ -181,6 +197,17 @@
   border-color: var(--pico-primary);
   background: color-mix(in srgb, var(--pico-primary) 6%, transparent);
 }
+.cpick-cls-row { display:flex; align-items:center; gap:0.45rem; padding:0.3rem 0.7rem; cursor:default; border-top:1px solid var(--pico-muted-border-color); }
+.cpick-cls-row:first-child { border-top:none; }
+.cpick-cls-row:hover { background:color-mix(in srgb,var(--pico-primary) 5%,transparent); }
+.cpick-expand { cursor:pointer; font-size:0.65rem; width:0.9rem; text-align:center; user-select:none; color:var(--pico-muted-color); transition:transform 0.15s; flex-shrink:0; }
+.cpick-expand.open { transform:rotate(90deg); }
+.cpick-cls-row > label { margin:0; font-size:0.85rem; font-weight:600; cursor:pointer; flex:1; }
+.cpick-count { font-size:0.75rem; color:var(--pico-muted-color); white-space:nowrap; }
+.cpick-subs { padding:0.1rem 0.7rem 0.4rem 2.7rem; background:color-mix(in srgb,var(--pico-muted-color) 4%,transparent); }
+.cpick-sub-row { display:flex; align-items:center; gap:0.4rem; padding:0.18rem 0; }
+.cpick-sub-row label { margin:0; font-size:0.82rem; font-weight:normal; cursor:pointer; }
+.cpick-cls-row input[type=checkbox], .cpick-sub-row input[type=checkbox] { margin:0; flex-shrink:0; }
 </style>
 
 <article id="import-article">
@@ -237,4 +264,102 @@
   });
 })();
 </script>
+
+<script>
+(function () {
+  /* ── Classification picker widget (accordion tree) ── */
+  var widgets = document.querySelectorAll('.cls-picker-widget');
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderPicker(widget, data) {
+    var clsField = widget.dataset.clsField;
+    var subField = widget.dataset.subField;
+    var savedCls = (widget.dataset.clsVals || '').split(',').map(Number).filter(Boolean);
+    var savedSub = (widget.dataset.subVals || '').split(',').map(Number).filter(Boolean);
+    var tree     = widget.querySelector('.cls-picker-tree');
+    var statusEl = widget.querySelector('.cls-picker-status');
+
+    /* sub lookup by parent id */
+    var subsByParent = {};
+    data.subclassifications.forEach(function (s) {
+      (subsByParent[s.parent_id] = subsByParent[s.parent_id] || []).push(s);
+    });
+
+    tree.innerHTML = data.classifications.map(function (c) {
+      var subs       = subsByParent[c.id] || [];
+      var clsChk     = savedCls.indexOf(c.id) !== -1;
+      var hasSubSaved= subs.some(function (s) { return savedSub.indexOf(s.id) !== -1; });
+      var expanded   = clsChk || hasSubSaved;
+
+      var row = '<div class="cpick-cls-row">'
+        + '<span class="cpick-expand' + (expanded ? ' open' : '') + '" data-cls="' + c.id + '">&#9658;</span>'
+        + '<input type="checkbox" id="cpick-cls-' + c.id + '" name="' + clsField + '" value="' + c.id + '"' + (clsChk ? ' checked' : '') + '>'
+        + '<label for="cpick-cls-' + c.id + '">' + escHtml(c.name) + '</label>'
+        + (subs.length ? '<span class="cpick-count">(' + subs.length + ')</span>' : '')
+        + '</div>';
+
+      var subRows = subs.map(function (s) {
+        var chk = savedSub.indexOf(s.id) !== -1 ? ' checked' : '';
+        return '<div class="cpick-sub-row">'
+          + '<input type="checkbox" id="cpick-sub-' + s.id + '" name="' + subField + '" value="' + s.id + '"' + chk + '>'
+          + '<label for="cpick-sub-' + s.id + '">' + escHtml(s.name) + '</label>'
+          + '</div>';
+      }).join('');
+
+      return row + '<div class="cpick-subs"' + (expanded ? '' : ' hidden') + ' data-parent="' + c.id + '">' + subRows + '</div>';
+    }).join('');
+
+    /* expand/collapse arrow */
+    tree.addEventListener('click', function (e) {
+      var arrow = e.target.closest('.cpick-expand');
+      if (!arrow) return;
+      var id   = arrow.dataset.cls;
+      var subs = tree.querySelector('.cpick-subs[data-parent="' + id + '"]');
+      var open = !subs.hidden;
+      subs.hidden = open;
+      arrow.classList.toggle('open', !open);
+    });
+
+    /* checking a classification → expand; checking a sub → auto-check + expand parent */
+    tree.addEventListener('change', function (e) {
+      var inp = e.target;
+      if (inp.name === clsField && inp.checked) {
+        var subs  = tree.querySelector('.cpick-subs[data-parent="' + inp.value + '"]');
+        var arrow = tree.querySelector('.cpick-expand[data-cls="' + inp.value + '"]');
+        if (subs)  subs.hidden = false;
+        if (arrow) arrow.classList.add('open');
+      } else if (inp.name === subField && inp.checked) {
+        var subsDiv = inp.closest('.cpick-subs');
+        if (!subsDiv) return;
+        var pid    = subsDiv.dataset.parent;
+        var clsInp = tree.querySelector('input[name="' + clsField + '"][value="' + pid + '"]');
+        var arrow  = tree.querySelector('.cpick-expand[data-cls="' + pid + '"]');
+        if (clsInp && !clsInp.checked) clsInp.checked = true;
+        if (subsDiv.hidden) { subsDiv.hidden = false; if (arrow) arrow.classList.add('open'); }
+      }
+    });
+
+    if (statusEl) statusEl.hidden = true;
+    tree.hidden = false;
+  }
+
+  if (widgets.length) {
+    fetch('/api/jobsdb/classifications')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        widgets.forEach(function (w) { renderPicker(w, data); });
+      })
+      .catch(function (e) {
+        widgets.forEach(function (w) {
+          var s = w.querySelector('.cls-picker-status');
+          if (s) { s.textContent = 'Failed to load: ' + e; s.style.color = 'var(--pico-del-color)'; s.hidden = false; }
+        });
+      });
+  }
+})();
+</script>
+
 {% endblock %}

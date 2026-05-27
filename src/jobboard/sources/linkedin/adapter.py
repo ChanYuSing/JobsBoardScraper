@@ -86,7 +86,13 @@ class LinkedInAdapter:
         if cfg.hours_old:
             params["f_TPR"] = f"r{cfg.hours_old * 3600}"
         if cfg.job_type:
-            _JT = {"fulltime": "F", "parttime": "P", "contract": "C", "internship": "I"}
+            _JT = {
+                "fulltime": "F", "parttime": "P", "contract": "C",
+                "temporary": "T", "temp": "T",
+                "volunteer": "V",
+                "internship": "I",
+                "other": "O",
+            }
             code = _JT.get(cfg.job_type.lower())
             if code:
                 params["f_JT"] = code
@@ -110,7 +116,14 @@ class LinkedInAdapter:
             params["geoId"] = str(geo)
         ind = getattr(cfg, "industry_id", None)
         if ind is not None:
-            params["f_I"] = str(ind)
+            params["f_I"] = (
+                ",".join(str(x) for x in ind) if isinstance(ind, list) else str(ind)
+            )
+        fn = getattr(cfg, "job_function_id", None)
+        if fn is not None:
+            params["f_F"] = (
+                ",".join(fn) if isinstance(fn, list) else fn
+            )
 
         fetched = 0
         consecutive_empty = 0

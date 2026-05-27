@@ -5,7 +5,9 @@ from typing import Any
 
 import yaml
 
-from ...config import JobsDBSourceCfg, LinkedInCfg, config_write_lock, load_config
+from ...config import config_write_lock, load_config
+from ...sources.linkedin.industries import INDUSTRIES
+from ...sources.linkedin.job_functions import JOB_FUNCTIONS
 
 _write_lock = config_write_lock
 
@@ -18,8 +20,8 @@ JOBSDB_FIELDS: list[dict[str, Any]] = [
     {"key": "daterange",        "label": "Date range (days)","type": "select", "options": ["", "1", "3", "7", "14", "31"], "hint": "blank = all time"},
     {"key": "work_arrangement", "label": "Work arrangement", "type": "select", "options": ["", "on-site", "hybrid", "remote"], "hint": "blank = all"},
     {"key": "work_type",        "label": "Work type",        "type": "select", "options": ["", "full-time", "part-time", "contract", "casual", "internship"], "hint": "blank = all"},
-    {"key": "classification",   "label": "Classification ID","type": "text",   "hint": "e.g. 6281 = ICT; blank = all industries"},
-    {"key": "subclassification","label": "Sub-classification ID","type": "text","hint": "blank = all"},
+    {"key": "classification",   "label": "Classification",    "type": "cls-picker",     "hint": "Tick industries to filter — leave all unticked to search all"},
+    {"key": "subclassification","label": "Sub-classification","type": "cls-picker-sub"},
     {"key": "salary_range",     "label": "Salary range",     "type": "text",   "hint": "e.g. 30000-60000 (monthly HKD)"},
     {"key": "salary_type",      "label": "Salary type",      "type": "select", "options": ["", "Monthly", "Annual"], "hint": "blank = all"},
     {"key": "sort_mode",        "label": "Sort",             "type": "select", "options": ["", "ListDate", "Relevance"], "hint": "blank = default (Relevance)"},
@@ -33,20 +35,27 @@ LINKEDIN_FIELDS: list[dict[str, Any]] = [
     {"key": "keywords",         "label": "Keywords",         "type": "textarea", "hint": "AND search — required by LinkedIn"},
     {"key": "location",         "label": "Location",         "type": "text",   "hint": "e.g. Hong Kong"},
     {"key": "hours_old",        "label": "Hours old",        "type": "number", "hint": "e.g. 720 = last 30 days; blank = all time"},
-    {"key": "job_type",         "label": "Job type",         "type": "select", "options": ["", "fulltime", "parttime", "contract", "internship"], "hint": "blank = all"},
+    {"key": "job_type",         "label": "Job type",         "type": "select",
+     "options": ["", "fulltime", "parttime", "contract", "temporary", "internship", "volunteer", "other"],
+     "hint": "blank = all"},
     {"key": "is_remote",        "label": "Remote",           "type": "select", "options": ["", "true", "false", "hybrid"], "hint": "blank = all"},
     {"key": "experience_level", "label": "Experience level", "type": "multiselect",
      "options": [("1","Internship"),("2","Entry"),("3","Associate"),("4","Mid-Senior"),("5","Director"),("6","Executive")]},
     {"key": "easy_apply",       "label": "Easy Apply only",  "type": "select", "options": ["", "true", "false"], "hint": "blank = all"},
     {"key": "sort_by_date",     "label": "Sort by date",     "type": "select", "options": ["", "true", "false"], "hint": "blank = relevance sort"},
-    {"key": "geo_id",           "label": "Geo ID",           "type": "text",   "hint": "LinkedIn numeric geoId e.g. 102234630 for HK; overrides location"},
-    {"key": "industry_id",      "label": "Industry ID",      "type": "text",   "hint": "e.g. 96=technology, 4=software, 43=financial services"},
+    {"key": "geo_id",           "label": "Geo ID",           "type": "text",   "hint": "Optional: LinkedIn numeric geoId for a specific district; leave blank to use Location text above"},
+    {"key": "industry_id",      "label": "Industry",         "type": "multiselect",
+     "options": [(str(k), v) for k, v in sorted(INDUSTRIES.items(), key=lambda kv: kv[1])],
+     "hint": "Leave all unticked to search all industries"},
+    {"key": "job_function_id",  "label": "Job function",     "type": "multiselect",
+     "options": [(k, v) for k, v in sorted(JOB_FUNCTIONS.items(), key=lambda kv: kv[1])],
+     "hint": "Leave all unticked to search all functions"},
 ]
 
 SOURCE_FIELDS = {"jobsdb": JOBSDB_FIELDS, "linkedin_guest": LINKEDIN_FIELDS}
 
 
-def _cfg_to_display(source: str, cfg_obj: Any) -> dict[str, str]:
+def _cfg_to_display(cfg_obj: Any) -> dict[str, str]:
     """Convert a config model to flat string values for form display."""
     raw = cfg_obj.model_dump()
     out: dict[str, str] = {}
@@ -65,7 +74,7 @@ def get_sources(config_path: str) -> dict[str, dict[str, str]]:
     cfg = load_config(config_path)
     result: dict[str, dict[str, str]] = {}
     for name, src in cfg.sources.items():
-        result[name] = _cfg_to_display(name, src)
+        result[name] = _cfg_to_display(src)
     return result
 
 
@@ -86,6 +95,15 @@ def _coerce_value(key: str, raw: str, fields: list[dict[str, Any]]) -> Any:
             return int(raw)
         except ValueError:
             return None
+    if key in ("classification", "subclassification", "industry_id"):
+        try:
+            nums = [int(p.strip()) for p in raw.split(",") if p.strip()]
+            return nums if nums else None
+        except ValueError:
+            return None
+    if key == "job_function_id":
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        return parts if parts else None
     if key in ("keywords", "experience_level"):
         # support textarea (newline-sep) and legacy comma-sep
         raw_clean = raw.replace("\r", "").replace("\n", ",")
