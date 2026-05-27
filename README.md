@@ -10,7 +10,7 @@ Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)**
 
 **Option A: Standalone executable (no installation required)**
 
-Download the pre-built binary for your platform from the [Releases page](https://github.com/ChanYuSing/JobsBoardScraper/releases/latest):
+Download the pre-built binary for your platform from the [Releases page](https://github.com/ChanYuSing/JobBoardScraper/releases/latest):
 
 | Platform | File |
 |---|---|
@@ -34,8 +34,8 @@ Requirements: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 Open Terminal (macOS/Linux) or PowerShell (Windows), then run:
 
 ```bash
-git clone https://github.com/ChanYuSing/JobsBoardScraper.git
-cd JobsBoardScraper
+git clone https://github.com/ChanYuSing/JobBoardScraper.git
+cd JobBoardScraper
 docker compose up -d
 ```
 
@@ -45,7 +45,7 @@ Open `http://localhost:8001`.
 - Edit `config.yaml` at any time — no rebuild needed.
 - To stop: `docker compose stop`. To remove the container (data preserved): `docker compose down`.
 
-**Option B: Python 3.12+**
+**Option C: Python 3.12+**
 
 ```bash
 # macOS / Linux
@@ -220,6 +220,9 @@ ai:
   api_key: ""                   # or set AI_API_KEY environment variable
   api_keys: {}                  # per-provider key store (managed by the UI)
   temperature: 0.2
+  max_tokens: null              # null = provider default; set e.g. 4096 to cap output
+  reasoning_effort: null        # null | low | medium | high | max  (Grok / OpenAI o-series)
+  thinking_enabled: null        # null = provider default; true/false forces on/off (Gemini / Claude)
   auto_score: false             # score new jobs automatically after each run
   system_prompt: "..."
   cv: ""                        # paste your CV here, or use the Analyse page UI
@@ -279,7 +282,7 @@ ai:
 | `grok` | `https://api.x.ai/v1` | API key | xAI Grok models |
 | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai` | API key | OpenAI-compat endpoint |
 | `deepseek` | `https://api.deepseek.com` | API key | DeepSeek V3/V4 |
-| `anthropic` | `https://api.anthropic.com` | API key | Claude 3.x / Sonnet |
+| `anthropic` | `https://api.anthropic.com` | API key | Claude Sonnet 4 / Haiku |
 | `openai_compat` | *(set base_url manually)* | Optional | Any OpenAI-compatible API |
 
 API keys can be set via the `AI_API_KEY` environment variable, per-provider in the `api_keys` dict, or via the Analyse page UI (which stores them in `api_keys`).
