@@ -18,8 +18,18 @@ Download the pre-built binary for your platform from the [Releases page](https:/
 | macOS | `JobBoardScraper-macos` |
 | Linux | `JobBoardScraper-linux` |
 
-- **Windows:** double-click the `.exe`
-- **macOS / Linux:** `chmod +x JobBoardScraper-* && ./JobBoardScraper-*`
+- **Windows:** double-click `JobBoardScraper-windows.exe`
+- **macOS:** open Terminal, then run:
+  ```sh
+  xattr -c ~/Downloads/JobBoardScraper-macos   # remove macOS quarantine flag (required on first run)
+  chmod +x ~/Downloads/JobBoardScraper-macos
+  ~/Downloads/JobBoardScraper-macos
+  ```
+- **Linux:** open Terminal, then run:
+  ```sh
+  chmod +x ~/Downloads/JobBoardScraper-linux
+  ~/Downloads/JobBoardScraper-linux
+  ```
 
 A browser tab opens at `http://localhost:8001`. Your data is saved to `~/JobBoardScraper/`.
 
@@ -45,20 +55,22 @@ Open `http://localhost:8001`.
 - Edit `config.yaml` at any time — no rebuild needed.
 - To stop: `docker compose stop`. To remove the container (data preserved): `docker compose down`.
 
+---
+
 **Option C: Python 3.12+**
 
 ```bash
 # macOS / Linux
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-uvicorn src.jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
+uvicorn jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 ```powershell
 # Windows (PowerShell)
 python -m venv .venv ; .\.venv\Scripts\Activate.ps1
 pip install -e .
-uvicorn src.jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
+uvicorn jobboard.web.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 Open `http://127.0.0.1:8001`.
