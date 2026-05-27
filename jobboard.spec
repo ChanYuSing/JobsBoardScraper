@@ -72,12 +72,14 @@ a = Analysis(
 pyz = PYZ(a.pure)
 
 if sys.platform == "darwin":
-    # macOS: produce a .app bundle (onedir mode) so users can right-click → Open
-    # from Finder without needing Terminal, chmod, or xattr.
+    # macOS: wrap a self-contained onefile EXE inside a .app bundle so users can
+    # right-click → Open from Finder without needing Terminal, chmod, or xattr.
     exe = EXE(
         pyz,
         a.scripts,
-        [],             # binaries/datas go into COLLECT, not embedded in EXE
+        a.binaries,     # embed everything (onefile style) — avoids COLLECT name collision
+        a.datas,
+        [],
         name="JobBoardScraper",
         debug=False,
         bootloader_ignore_signals=False,
@@ -92,18 +94,8 @@ if sys.platform == "darwin":
         codesign_identity=None,
         entitlements_file=None,
     )
-    coll = COLLECT(
-        exe,
-        a.binaries,
-        a.zipfiles,
-        a.datas,
-        strip=False,
-        upx=False,
-        upx_exclude=[],
-        name="JobBoardScraper",
-    )
     app = BUNDLE(
-        coll,
+        exe,
         name="JobBoardScraper.app",
         bundle_identifier="com.jobbboardscraper.app",
         info_plist={
