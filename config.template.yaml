@@ -2,7 +2,7 @@
   jobsdb:
     enabled: true
     keywords: null              # one keyword per line in the UI; null = all jobs
-    location: Hong Kong SAR
+    location: Hong Kong SAR          # change to your city / region
     daterange: null             # 1 | 3 | 7 | 14 | 31 (days) | null = all time
     work_arrangement: null      # on-site | hybrid | remote
     work_type: null             # full-time | part-time | contract | casual | internship
@@ -17,8 +17,8 @@
 
   linkedin_guest:
     enabled: true
-    keywords: []                # required by LinkedIn -- blank returns no results
-    location: Hong Kong
+    keywords: []                # REQUIRED — LinkedIn returns no results without keywords; e.g. [software engineer]
+    location: Hong Kong              # change to your city / region
     geo_id: null                # numeric geoId e.g. 102234630 for HK; overrides location
     hours_old: 720              # last N hours (720 = 30 days); null = all time
     job_type: null              # fulltime | parttime | contract | temporary | internship | volunteer | other
@@ -44,8 +44,8 @@ scheduler:
   order: [jobsdb, linkedin_guest]
 
 ai:
-  provider: ollama              # openai | ollama | lmstudio | grok | gemini | openai_compat
-  model: llama3.2
+  provider: ollama              # openai | anthropic | deepseek | grok | gemini | ollama | lmstudio | openai_compat
+  model: llama3.2               # ollama: llama3.2 (fast, small) or llama3.1:8b (better quality)
   base_url: ""                  # leave empty to use provider default
   api_key: ""                   # or set AI_API_KEY environment variable
   api_keys: {}
@@ -53,8 +53,12 @@ ai:
   max_tokens: null           # null = provider default; set e.g. 4096 to cap output length
   reasoning_effort: null     # null | low | medium | high | max  (Grok / OpenAI o-series)
   thinking_enabled: null     # null = provider default; true/false forces on/off (Gemini / Claude)
-  auto_score: false
-  system_prompt: ""
+  auto_score: false             # set true to score new jobs automatically after each scrape run
+  system_prompt: >-
+    You are an expert career advisor. Evaluate job-candidate fit objectively
+    and strictly based on evidence in the CV and the job description — do not
+    infer or assume skills or experience that are not explicitly stated.
+    Be analytical and concise. Respond with valid JSON only, exactly as specified.
   cv: ""
   fields:
     - name: skills_match

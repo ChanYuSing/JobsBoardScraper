@@ -224,8 +224,8 @@ scheduler:
   order: [jobsdb, linkedin_guest]
 
 ai:
-  provider: ollama              # see AI providers table below
-  model: llama3.2
+  provider: ollama              # openai | anthropic | deepseek | grok | gemini | ollama | lmstudio | openai_compat
+  model: llama3.2               # ollama: llama3.2 (fast, small) or llama3.1:8b (better quality)
   base_url: ""                  # leave empty to use provider default
   api_key: ""                   # or set AI_API_KEY environment variable
   api_keys: {}                  # per-provider key store (managed by the UI)
@@ -233,8 +233,12 @@ ai:
   max_tokens: null              # null = provider default; set e.g. 4096 to cap output
   reasoning_effort: null        # null | low | medium | high | max  (Grok / OpenAI o-series)
   thinking_enabled: null        # null = provider default; true/false forces on/off (Gemini / Claude)
-  auto_score: false             # score new jobs automatically after each run
-  system_prompt: "..."
+  auto_score: false             # set true to score new jobs automatically after each scrape run
+  system_prompt: >-
+    You are an expert career advisor. Evaluate job-candidate fit objectively
+    and strictly based on evidence in the CV and the job description — do not
+    infer or assume skills or experience that are not explicitly stated.
+    Be analytical and concise. Respond with valid JSON only, exactly as specified.
   cv: ""                        # paste your CV here, or use the Analyse page UI
   fields:
     - name: skills_match
