@@ -1,0 +1,127 @@
+﻿sources:
+  jobsdb:
+    enabled: true
+    keywords: null              # one keyword per line in the UI; null = all jobs
+    location: Hong Kong SAR
+    daterange: null             # 1 | 3 | 7 | 14 | 31 (days) | null = all time
+    work_arrangement: null      # on-site | hybrid | remote
+    work_type: null             # full-time | part-time | contract | casual | internship
+    salary_range: null          # e.g. 30000-60000 (monthly HKD)
+    salary_type: null           # Monthly | Annual
+    classification: null        # industry ID e.g. 6281 = ICT
+    subclassification: null
+    sort_mode: null             # ListDate = most recent | Relevance = most relevant (default)
+    page_size: 32
+    start_page: 1
+    max_pages: 0
+
+  linkedin_guest:
+    enabled: true
+    keywords: []                # required by LinkedIn -- blank returns no results
+    location: Hong Kong
+    geo_id: null                # numeric geoId e.g. 102234630 for HK; overrides location
+    hours_old: 720              # last N hours (720 = 30 days); null = all time
+    job_type: null              # fulltime | parttime | contract | temporary | internship | volunteer | other
+    is_remote: null             # true (Remote) | hybrid | false (On-site)
+    easy_apply: null            # true = Easy Apply only | false = all
+    sort_by_date: null          # true = most-recent first | false = most-relevant first
+    experience_level: null      # list e.g. [2,3,4]: 1=Internship 2=Entry 3=Associate 4=Mid-Senior 5=Director 6=Executive
+    industry_id: null           # list of IDs e.g. [96,4]: 96=Technology 4=Software
+    job_function_id: null       # list of codes e.g. ["it","eng"]: it=IT eng=Engineering
+
+scraper:
+  request_timeout_seconds: 20
+  retries: 3
+  jitter_ms: [1000, 3000]
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+storage:
+  sqlite_path: data/jobs.sqlite
+
+scheduler:
+  enabled: false
+  cron: "0 1 * * *"
+  order: [jobsdb, linkedin_guest]
+
+ai:
+  provider: ollama              # openai | ollama | lmstudio | grok | gemini | openai_compat
+  model: llama3.2
+  base_url: ""                  # leave empty to use provider default
+  api_key: ""                   # or set AI_API_KEY environment variable
+  api_keys: {}
+  temperature: 0.2           # null = use provider default
+  max_tokens: null           # null = provider default; set e.g. 4096 to cap output length
+  reasoning_effort: null     # null | low | medium | high | max  (Grok / OpenAI o-series)
+  thinking_enabled: null     # null = provider default; true/false forces on/off (Gemini / Claude)
+  auto_score: false
+  system_prompt: ""
+  cv: ""
+  fields:
+    - name: skills_match
+      type: int
+      description: >-
+        How well the candidate's demonstrated skills and experience cover the
+        role's core technical and functional requirements. Score only against
+        stated core requirements -- ignore nice-to-haves.
+        1-3: missing most core requirements;
+        4-6: meets some core requirements but has notable gaps;
+        7-10: meets most or all core requirements. (1-10)
+    - name: seniority_fit
+      type: int
+      description: >-
+        How well the candidate's experience level matches the seniority this
+        role expects. Penalise both under-qualification (likely rejection) and
+        over-qualification (likely boredom or mismatch). If the JD gives no
+        explicit seniority signal, infer from the depth of responsibilities
+        described.
+        1-3: significantly mismatched in either direction;
+        4-6: roughly appropriate but with meaningful gap or excess;
+        7-10: well-matched level. (1-10)
+    - name: growth_value
+      type: int
+      description: >-
+        Assuming the candidate secures and works this role, how much would it
+        advance their career, skills, or future opportunities? Score
+        independently of hiring probability -- a reach role can still score 9.
+        Consider: skill development, company or industry prestige, scope of the
+        role, and alignment with their stated career direction.
+        1-3: little benefit or actively misaligned with their goals;
+        4-6: modest step, some relevant exposure;
+        7-10: meaningful accelerator -- valuable skills, brand, or access. (1-10)
+    - name: overall
+      type: int
+      description: >-
+        Should the candidate apply? Synthesise skills match, seniority fit, and
+        growth value. A strong reach role with high growth value warrants a
+        higher score than an easy win with low value. A mismatch on role
+        direction or industry is sufficient to score low even if technical
+        skills match.
+        1-3: do not apply;
+        4-6: apply if bandwidth allows;
+        7-10: strong apply. (1-10)
+    - name: verdict
+      type: str
+      description: >-
+        One or two sentence sharp verdict. Include the strongest reason to apply
+        OR the key reason to hesitate.
+  prompt_fields:
+    - title
+    - company
+    - location
+    - description_text
+    - bullet_points
+    - work_types
+    - work_arrangement
+    - salary_label
+    - listing_date_label
+    - date_posted
+    - employment_type
+    - seniority_level
+    - classification
+    - subclassification
+    - teaser
+    - abstract
+    - benefit_text
+    - job_function
+    - industries
+    - num_applicants

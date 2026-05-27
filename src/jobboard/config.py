@@ -35,7 +35,6 @@ class JobsDBSourceCfg(SourceCfgBase):
     salary_type: str | None = None
     sort_mode: str | None = None               # ListDate = most recent | Relevance = default
     page_size: int = 32
-    # CLI overrides land here so the adapter sees a single source of truth.
     start_page: int = 1
     max_pages: int = 0                         # 0 = no cap
 

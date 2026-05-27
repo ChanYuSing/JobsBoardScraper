@@ -10,6 +10,8 @@ __pycache__/
 src/*.egg-info/
 .pytest_cache/
 
+
+
 # data / artifacts
 data/*.sqlite
 data/*.sqlite-journal
@@ -23,5 +25,10 @@ _sample_response.json
 .vscode/
 .idea/
 
-# secrets / local config
-config.yaml.bak
+# secrets / local config — never commit the live config (it contains API keys)
+config.yaml
+
+# PyInstaller build artefacts
+build/
+dist/
+*.spec.log

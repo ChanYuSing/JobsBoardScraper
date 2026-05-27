@@ -1,0 +1,55 @@
+name: Build & Release
+
+# Trigger: push a version tag, e.g.:
+#   git tag v1.0.0
+#   git push --tags
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: JobBoardScraper-windows.exe
+            exe_src: dist/JobBoardScraper.exe
+          - os: macos-latest
+            artifact: JobBoardScraper-macos
+            exe_src: dist/JobBoardScraper
+          - os: ubuntu-latest
+            artifact: JobBoardScraper-linux
+            exe_src: dist/JobBoardScraper
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install ".[dev]"
+
+      - name: Build executable
+        run: pyinstaller jobboard.spec
+
+      - name: Rename output
+        shell: bash
+        run: mv "${{ matrix.exe_src }}" "dist/${{ matrix.artifact }}"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: dist/${{ matrix.artifact }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -50,7 +50,7 @@ def kill_run(run_id: int = Form(...)):
 
     # Signal in-process worker to stop.
     _cancel_event.set()
-    # Also write cancel file for a CLI-started scheduler process.
+    # Also write cancel file for an out-of-process scheduler.
     try:
         _cancel_file(cfg.storage.sqlite_path).touch()
     except Exception:

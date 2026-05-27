@@ -8,7 +8,24 @@ Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)**
 
 ### Step 1 — Install
 
-**Option A: Docker (recommended, no Python required)**
+**Option A: Standalone executable (no installation required)**
+
+Download the pre-built binary for your platform from the [Releases page](https://github.com/ChanYuSing/JobsBoardScraper/releases/latest):
+
+| Platform | File |
+|---|---|
+| Windows | `JobBoardScraper-windows.exe` |
+| macOS | `JobBoardScraper-macos` |
+| Linux | `JobBoardScraper-linux` |
+
+- **Windows:** double-click the `.exe`
+- **macOS / Linux:** `chmod +x JobBoardScraper-* && ./JobBoardScraper-*`
+
+A browser tab opens at `http://localhost:8001`. Your data is saved to `~/JobBoardScraper/`.
+
+---
+
+**Option B: Docker (no Python required)**
 
 Docker runs the app in an isolated environment on your computer — nothing is installed globally.
 
@@ -137,28 +154,6 @@ Enable **Auto-score** to have jobs scored automatically after each fetch+enrich 
 
 ---
 
-## CLI
-
-All operations are also available from the command line.
-
-```bash
-# Phase 1 -- fetch card data (title, company, location, salary)
-jobboard fetch                          # all enabled sources
-jobboard fetch --source linkedin_guest
-jobboard fetch --source jobsdb
-
-# Phase 2 -- enrich with full descriptions (one HTTP request per job)
-jobboard enrich
-jobboard enrich --source linkedin_guest
-jobboard enrich --source jobsdb
-
-# Quick inspection
-jobboard new  --since 24h              # jobs first seen in last 24 h
-jobboard runs --source jobsdb -n 5     # last 5 run records
-```
-
----
-
 ## Sources
 
 | Name | Table | Cap | Notes |
@@ -178,30 +173,31 @@ sources:
     enabled: true
     keywords: null              # one keyword per line in UI; null = all jobs
     location: Hong Kong SAR
-    daterange: "1"              # days: 1 | 3 | 7 | 14 | 31 | null = all time
+    daterange: null             # 1 | 3 | 7 | 14 | 31 (days) | null = all time
     work_arrangement: null      # on-site | hybrid | remote
     work_type: null             # full-time | part-time | contract | casual | internship
-    classification: null        # industry ID e.g. 6281 = ICT
-    subclassification: null
     salary_range: null          # e.g. 30000-60000 (monthly HKD)
     salary_type: null           # Monthly | Annual
-    sort_mode: null             # ListDate = newest | Relevance = default
+    classification: null        # industry ID e.g. 6281 = ICT
+    subclassification: null
+    sort_mode: null             # ListDate = most recent | Relevance = most relevant (default)
     page_size: 32               # results per page (max 32)
     start_page: 1               # resume from page N
     max_pages: 0                # 0 = no cap
 
   linkedin_guest:
     enabled: true
-    keywords: []                # required by LinkedIn -- blank returns no results
+    keywords: []                # required by LinkedIn — blank returns no results
     location: Hong Kong
-    hours_old: 720              # last N hours (720 = 30 days); null = all time
-    job_type: null              # fulltime | parttime | contract | internship
-    is_remote: null             # true | false | hybrid
-    experience_level: null      # 1=Internship 2=Entry 3=Associate 4=Mid-Senior 5=Director 6=Executive
-    easy_apply: null            # true = Easy Apply only
-    sort_by_date: null          # true = most-recent first
     geo_id: null                # numeric geoId e.g. 102234630 for HK; overrides location
-    industry_id: null           # 96=technology | 4=software | 43=financial services
+    hours_old: 720              # last N hours (720 = 30 days); null = all time
+    job_type: null              # fulltime | parttime | contract | temporary | internship | volunteer | other
+    is_remote: null             # true (Remote) | hybrid | false (On-site)
+    easy_apply: null            # true = Easy Apply only | false = all
+    sort_by_date: null          # true = most-recent first | false = most-relevant first
+    experience_level: null      # list e.g. [2,3,4]: 1=Internship 2=Entry 3=Associate 4=Mid-Senior 5=Director 6=Executive
+    industry_id: null           # list of IDs e.g. [96,4]: 96=Technology 4=Software 43=Financial Services
+    job_function_id: null       # list of codes e.g. ["it","eng"]: it=IT fin=Finance eng=Engineering
 
 scraper:
   request_timeout_seconds: 20

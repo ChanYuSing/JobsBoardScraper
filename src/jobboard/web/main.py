@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     finally:
         conn.close()
     if cfg.scheduler.cron and cfg.scheduler.enabled and cfg.enabled_sources():
-        _scheduler = build_scheduler(cfg)
+        _scheduler = build_scheduler(cfg, config_path=CONFIG_PATH)
         _scheduler.start()
     app.state.scheduler = _scheduler
     worker = start_queue_worker()

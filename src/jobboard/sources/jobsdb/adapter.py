@@ -2,13 +2,11 @@
 
 Phase 1 — fetch
     POST /graphql  (jobSearchV6) — paginated card data.
-    Cloudflare blocks are surfaced as CloudflareBlockedError so the CLI can
-    record the last good page and suggest a ``--start-page`` resume command.
+    Cloudflare blocks are surfaced as CloudflareBlockedError.
     Yields one JobsDBCard per search result.
 
 Phase 2 — enrich
     POST /graphql  (jobDetails) — full description per job ID.
-    Triggered by ``jobboard enrich --source jobsdb``.
 """
 from __future__ import annotations
 
@@ -94,7 +92,7 @@ def _build_params(cfg) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Exceptions (re-exported so cli.py can catch them without reaching into client)
+# Exceptions (re-exported so callers don't need to reach into the internal client)
 # ---------------------------------------------------------------------------
 
 class CloudflareBlockedError(RuntimeError):
@@ -403,7 +401,7 @@ class JobsDBAdapter:
     def search_paginated(
         self,
     ) -> Iterator[tuple[int, list[JobsDBCard], int | None]]:
-        """Yield (page_number, cards, total_count) for CLI progress logging."""
+        """Yield (page_number, cards, total_count) for progress tracking."""
         for page, payload in self._client.iter_all(
             self._params, self._page_size, self._start_page, self._max_pages
         ):

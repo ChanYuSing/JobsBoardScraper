@@ -130,7 +130,7 @@ def toggle_enabled(request: Request):
         cfg = get_config()
         if cfg.scheduler.cron:
             try:
-                new_sched = build_scheduler(cfg)
+                new_sched = build_scheduler(cfg, config_path=CONFIG_PATH)
                 new_sched.start()
                 request.app.state.scheduler = new_sched
             except Exception:
