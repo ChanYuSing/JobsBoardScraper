@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir -e . --no-build-isolation || true
 
 # Copy source
 COPY src/ ./src/
-COPY config.yaml ./
+# Use template as default config; runtime config.yaml is volume-mounted by docker-compose
+COPY config.template.yaml ./config.yaml
 
 # Install properly now that src/ is present
 RUN pip install --no-cache-dir -e .

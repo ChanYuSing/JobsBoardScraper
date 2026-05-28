@@ -1,6 +1,8 @@
 """Sources routes."""
 from __future__ import annotations
 
+from urllib.parse import quote_plus
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -30,6 +32,8 @@ def sources_page(request: Request, flash: str = "", flash_type: str = ""):
 
 @router.post("/sources/{name}/save")
 async def save(name: str, request: Request):
+    if name not in SOURCE_FIELDS:
+        return RedirectResponse("/sources?flash=Unknown+source&flash_type=error", status_code=303)
     form = await request.form()
     # collect multi-value fields (e.g. multiselect chips) as comma-joined strings
     form_dict: dict[str, str] = {}
@@ -45,13 +49,15 @@ async def save(name: str, request: Request):
         return RedirectResponse(f"/sources?flash=Saved+{name}+settings", status_code=303)
     except Exception as exc:
         return RedirectResponse(
-            f"/sources?flash={str(exc)[:120]}&flash_type=error", status_code=303
+            f"/sources?flash={quote_plus(str(exc)[:120])}&flash_type=error", status_code=303
         )
 
 
 @router.post("/sources/{name}/run")
 def run_now(name: str):
     """Queue fetch then enrich for one source."""
+    if name not in SOURCE_FIELDS:
+        return RedirectResponse("/sources?flash=Unknown+source&flash_type=error", status_code=303)
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch", "enrich"])
     return RedirectResponse(f"/sources?flash=Fetch+%2B+enrich+queued+for+{name}.", status_code=303)
@@ -60,6 +66,8 @@ def run_now(name: str):
 @router.post("/sources/{name}/fetch")
 def fetch_now(name: str):
     """Queue fetch-only for one source."""
+    if name not in SOURCE_FIELDS:
+        return RedirectResponse("/sources?flash=Unknown+source&flash_type=error", status_code=303)
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["fetch"])
     return RedirectResponse(f"/sources?flash=Fetch+queued+for+{name}.", status_code=303)
@@ -68,6 +76,8 @@ def fetch_now(name: str):
 @router.post("/sources/{name}/enrich")
 def enrich_now(name: str):
     """Queue enrich-only for one source."""
+    if name not in SOURCE_FIELDS:
+        return RedirectResponse("/sources?flash=Unknown+source&flash_type=error", status_code=303)
     cfg = get_config()
     enqueue_run([name], CONFIG_PATH, cfg.storage.sqlite_path, phases=["enrich"])
     return RedirectResponse(f"/sources?flash=Enrich+queued+for+{name}.", status_code=303)

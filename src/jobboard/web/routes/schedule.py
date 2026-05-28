@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -60,7 +61,7 @@ async def save(request: Request):
         return RedirectResponse("/schedule?flash=Schedule+saved", status_code=303)
     except Exception as exc:
         return RedirectResponse(
-            f"/schedule?flash={str(exc)[:120]}&flash_type=error", status_code=303
+            f"/schedule?flash={quote_plus(str(exc)[:120])}&flash_type=error", status_code=303
         )
 
 
@@ -79,7 +80,7 @@ async def scraper_save(request: Request):
         return RedirectResponse("/schedule?flash=Scraper+settings+saved", status_code=303)
     except Exception as exc:
         return RedirectResponse(
-            f"/schedule?flash={str(exc)[:120]}&flash_type=error", status_code=303
+            f"/schedule?flash={quote_plus(str(exc)[:120])}&flash_type=error", status_code=303
         )
 
 
@@ -198,5 +199,5 @@ async def save_all(request: Request):
         return RedirectResponse("/schedule?flash=Settings+saved", status_code=303)
     except Exception as exc:
         return RedirectResponse(
-            f"/schedule?flash={str(exc)[:120]}&flash_type=error", status_code=303
+            f"/schedule?flash={quote_plus(str(exc)[:120])}&flash_type=error", status_code=303
         )
