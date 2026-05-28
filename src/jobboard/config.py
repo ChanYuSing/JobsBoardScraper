@@ -20,13 +20,13 @@ config_write_lock = threading.Lock()
 class SourceCfgBase(BaseModel):
     """Common to every source section."""
     model_config = ConfigDict(extra="allow")
-    enabled: bool = True
+    enabled: bool = False
 
 
 class JobsDBSourceCfg(SourceCfgBase):
     keywords: str | list[str] | None = None   # str or list joined with space (AND); null = all jobs
     location: str | None = "Hong Kong SAR"
-    daterange: int | None = None               # days old: 1 | 3 | 7 | 14 | 31 | None = all time
+    daterange: int | None = 7                  # days old: 1 | 3 | 7 | 14 | 31 | None = all time
     work_arrangement: str | list[str] | None = None  # on-site | hybrid | remote
     work_type: str | list[str] | None = None         # full-time | part-time | contract | casual | internship
     classification: int | list[int] | None = None    # industry ID (e.g. 6281=ICT)
@@ -42,7 +42,7 @@ class JobsDBSourceCfg(SourceCfgBase):
 class LinkedInCfg(SourceCfgBase):
     location: str = "Hong Kong"
     keywords: list[str] = Field(default_factory=list)
-    hours_old: int | None = 720
+    hours_old: int | None = 168                # 168 = 7 days
     job_type: str | None = None
     is_remote: bool | str | None = None
     experience_level: int | list[int] | None = None

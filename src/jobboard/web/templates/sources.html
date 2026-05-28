@@ -24,7 +24,7 @@
     {# ── enabled toggle at top ── #}
     <label class="source-toggle">
       <input type="checkbox" name="enabled" value="true" role="switch"
-             {% if values.get('enabled','true') in ('true','True') %}checked{% endif %}/>
+             {% if values.get('enabled','false') in ('true','True') %}checked{% endif %}/>
       <span>Enabled</span>
     </label>
 

@@ -135,7 +135,7 @@ def save_source(config_path: str, source: str, form: dict[str, str]) -> None:
     }
 
     # ── validation ──────────────────────────────────────────────────────────
-    if source == "linkedin_guest":
+    if source == "linkedin_guest" and coerced.get("enabled") is True:
         keywords = coerced.get("keywords")
         if not keywords:
             raise ValueError("LinkedIn requires at least one keyword — keywords cannot be empty.")
