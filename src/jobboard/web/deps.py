@@ -61,10 +61,24 @@ def get_config() -> Config:
     return cfg
 
 
+# ── Persistent shared connection ────────────────────────────────────────────
+# Opened once at startup; its page cache (and the OS mmap cache) stays warm
+# across all requests, eliminating the cold-I/O hit of per-request open/close.
+_db_conn: sqlite3.Connection | None = None
+
+
+def init_db(sqlite_path: str) -> sqlite3.Connection:
+    """Open the persistent connection at startup.  Call exactly once."""
+    global _db_conn
+    _db_conn = connect(sqlite_path)
+    return _db_conn
+
+
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-    cfg = get_config()
-    conn = connect(cfg.storage.sqlite_path)
     try:
-        yield conn
+        yield _db_conn
     finally:
-        conn.close()
+        # If the route failed mid-write (before conn.commit()), roll back so
+        # the persistent connection isn't left in a dirty transaction state.
+        if _db_conn and _db_conn.in_transaction:
+            _db_conn.rollback()
