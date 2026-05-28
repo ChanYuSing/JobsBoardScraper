@@ -13,12 +13,12 @@
   <header class="source-card__header">
     <div class="source-card__left">
       <span class="source-card__name">{{ display_name }}</span>
-      <label class="source-toggle--inline">
+      <label class="source-toggle--inline source-enabled-toggle">
         <input type="checkbox" name="enabled" value="true" role="switch"
                form="src-form-{{ name }}"
                onchange="autoSaveNow('{{ name }}')"
                {% if values.get('enabled','false') in ('true','True') %}checked{% endif %}/>
-        <span>Enabled</span>
+        <span></span>
       </label>
     </div>
     <span id="save-status-{{ name }}" class="source-save-status" aria-live="polite"></span>

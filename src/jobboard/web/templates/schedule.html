@@ -6,29 +6,27 @@
 <p class="page-heading">Schedule</p>
 
 {# ── status bar ── #}
-<div class="sched-status-bar">
-  <span>
-    Scheduled runs:
-    {% if sched.enabled %}
-      <strong class="sched-status--on">Enabled</strong>
-    {% else %}
-      <strong class="sched-status--off">Disabled</strong>
-    {% endif %}
-    {% if running %}<span class="badge badge-running sched-run-badge">run active</span>{% endif %}
-  </span>
-  <div class="sched-status-actions">
-    <form method="post" action="/schedule/run-all">
-      <button type="submit" class="outline secondary sched-toggle-btn">▶ Run All Now</button>
-    </form>
-    <form method="post" action="/schedule/toggle-enabled">
-      {% if sched.enabled %}
-        <button type="submit" class="outline secondary sched-toggle-btn">⏸ Disable</button>
-      {% else %}
-        <button type="submit" class="outline sched-toggle-btn">▶ Enable</button>
-      {% endif %}
-    </form>
-  </div>
-</div>
+<article class="source-card">
+  <header class="source-card__header">
+    <div class="source-card__left">
+      <span class="source-card__name">Scheduled Runs</span>
+      <form method="post" action="/schedule/toggle-enabled" id="sched-enabled-form" style="margin:0">
+        <label class="source-toggle--inline source-enabled-toggle">
+          <input type="checkbox" role="switch"
+                 {% if sched.enabled %}checked{% endif %}
+                 onchange="document.getElementById('sched-enabled-form').submit()"/>
+          <span></span>
+        </label>
+      </form>
+      {% if running %}<span class="badge badge-running" style="margin-left:0.25rem">run active</span>{% endif %}
+    </div>
+    <div class="source-card__actions">
+      <form method="post" action="/schedule/run-all" style="margin:0">
+        <button type="submit" class="secondary outline source-action-btn">&#9654; Run All Now</button>
+      </form>
+    </div>
+  </header>
+</article>
 
 <form method="post" action="/schedule/save-all">
 <div class="sched-grid">

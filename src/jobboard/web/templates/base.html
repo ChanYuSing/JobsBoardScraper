@@ -175,6 +175,9 @@
     .source-hint { display: block; color: var(--pico-muted-color); font-size: 0.78rem; margin: 0.1rem 0 0.3rem; line-height: 1.35; }
     .source-toggle { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem !important; }
     .source-toggle--inline { display: flex; align-items: center; gap: 0.5rem; margin: 0 !important; }
+    .source-enabled-toggle input + span::after { content: 'Disabled'; color: var(--pico-muted-color); font-size: 0.82rem; }
+    .source-enabled-toggle input:checked + span::after { content: 'Enabled'; color: inherit; }
+    .source-card:has(.source-enabled-toggle input:not(:checked)) form { opacity: 0.5; }
     .source-toggle input[type=checkbox], .source-toggle--inline input[type=checkbox] { width: auto !important; margin: 0 !important; flex-shrink: 0; }
     .source-save-btn { margin-top: 1rem !important; width: auto !important; padding-left: 2.25rem !important; padding-right: 2.25rem !important; }
     .source-divider { grid-column: 1/-1; display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0 0; }
@@ -188,13 +191,6 @@
     .tag-input__remove:hover { opacity: 1; }
     .tag-input__text { border: none !important; outline: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; min-width: 100px; flex: 1; background: transparent !important; font: inherit; color: inherit; width: auto !important; min-height: 0 !important; }
     /* ── schedule page ── */
-    .sched-status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; padding: 0.6rem 1rem; background: var(--pico-card-sectioning-background-color, #f8f8f8); border-radius: 6px; border: 1px solid var(--pico-muted-border-color); }
-    .sched-status-actions { display: flex; gap: 0.5rem; align-items: center; }
-    .sched-status-actions form { margin: 0 !important; }
-    .sched-status--on { color: #059669; }
-    .sched-status--off { color: var(--pico-muted-color); }
-    .sched-run-badge { margin-left: 0.5rem; }
-    .sched-toggle-btn { padding: 0.22rem 0.75rem !important; font-size: 0.82rem !important; margin: 0 !important; }
     .sched-ai-row { display: flex; align-items: center; gap: 1rem; }
     .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
     .sched-time-row { display: flex; gap: 1rem; }
