@@ -11,7 +11,16 @@
 {% set display_name = src_label.get(name, name) %}
 <article class="source-card">
   <header class="source-card__header">
-    <span class="source-card__name">{{ display_name }}</span>
+    <div class="source-card__left">
+      <span class="source-card__name">{{ display_name }}</span>
+      <label class="source-toggle--inline">
+        <input type="checkbox" name="enabled" value="true" role="switch"
+               form="src-form-{{ name }}"
+               onchange="autoSaveNow('{{ name }}')"
+               {% if values.get('enabled','false') in ('true','True') %}checked{% endif %}/>
+        <span>Enabled</span>
+      </label>
+    </div>
     <span id="save-status-{{ name }}" class="source-save-status" aria-live="polite"></span>
     <div class="source-card__actions">
       <button type="button" class="secondary outline source-action-btn" title="Save settings then fetch new job cards" onclick="saveAndRun('{{ name }}', 'fetch')">Fetch</button>
@@ -21,13 +30,6 @@
   </header>
 
   <form method="post" action="/sources/{{ name }}/save" id="src-form-{{ name }}">
-    {# ── enabled toggle at top ── #}
-    <label class="source-toggle">
-      <input type="checkbox" name="enabled" value="true" role="switch"
-             {% if values.get('enabled','false') in ('true','True') %}checked{% endif %}/>
-      <span>Enabled</span>
-    </label>
-
     <div class="source-fields-grid">
       {% for f in fields %}
         {% if f.key == 'enabled' %}
