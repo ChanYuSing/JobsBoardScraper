@@ -168,18 +168,20 @@
     .source-card__name { font-size: 0.95rem; font-weight: 700; }
     .source-card__actions { display: flex; gap: 0.4rem; align-items: center; }
     .source-card__actions form { margin: 0 !important; }
+    .source-card__left form { margin: 0; }
     .source-action-btn { padding: 0.22rem 0.75rem !important; font-size: 0.82rem !important; margin: 0 !important; }
+    .source-save-status { font-size: 0.78rem; color: var(--pico-muted-color); white-space: nowrap; flex-shrink: 0; }
+    .source-save-status--ok    { color: #065f46; }
+    .source-save-status--error { color: #991b1b; }
     .source-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; margin-top: 0.75rem; align-items: end; }
     .source-field--full { grid-column: 1/-1; }
     .source-field__label { margin: 0 0 0.35rem !important; font-size: 0.875rem; font-weight: 500; }
     .source-hint { display: block; color: var(--pico-muted-color); font-size: 0.78rem; margin: 0.1rem 0 0.3rem; line-height: 1.35; }
-    .source-toggle { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem !important; }
     .source-toggle--inline { display: flex; align-items: center; gap: 0.5rem; margin: 0 !important; }
     .source-enabled-toggle input + span::after { content: 'Disabled'; color: var(--pico-muted-color); font-size: 0.82rem; }
     .source-enabled-toggle input:checked + span::after { content: 'Enabled'; color: inherit; }
-    .source-card:has(.source-enabled-toggle input:not(:checked)) form { opacity: 0.5; }
-    .source-toggle input[type=checkbox], .source-toggle--inline input[type=checkbox] { width: auto !important; margin: 0 !important; flex-shrink: 0; }
-    .source-save-btn { margin-top: 1rem !important; width: auto !important; padding-left: 2.25rem !important; padding-right: 2.25rem !important; }
+    .source-card:has(.source-enabled-toggle input:not(:checked)) > form { opacity: 0.5; }
+    .source-toggle--inline input[type=checkbox] { width: auto !important; margin: 0 !important; flex-shrink: 0; }
     .source-divider { grid-column: 1/-1; display: flex; align-items: center; gap: 0.6rem; margin: 0.4rem 0 0; }
     .source-divider__label { font-size: 0.72rem; font-weight: 600; color: var(--pico-muted-color); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; flex-shrink: 0; }
     .source-divider__line { flex: 1; height: 1px; background: var(--pico-muted-border-color); }
@@ -191,7 +193,6 @@
     .tag-input__remove:hover { opacity: 1; }
     .tag-input__text { border: none !important; outline: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; min-width: 100px; flex: 1; background: transparent !important; font: inherit; color: inherit; width: auto !important; min-height: 0 !important; }
     /* ── schedule page ── */
-    .sched-ai-row { display: flex; align-items: center; gap: 1rem; }
     .sched-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
     .sched-time-row { display: flex; gap: 1rem; }
     .sched-time-row label { flex: 1; }
@@ -200,15 +201,7 @@
     .sched-order-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
     .sched-order-num { color: var(--pico-muted-color); min-width: 1.2rem; font-size: 0.82rem; text-align: right; flex-shrink: 0; }
     .sched-order-row select { margin: 0 !important; flex: 1; }
-    .sched-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
-    .sched-save-btn { margin-top: 1.25rem !important; width: 100% !important; }
     .sched-save-row { margin-top: 1rem; display: flex; justify-content: flex-end; }
-    .sched-save-row .sched-save-btn { width: auto !important; padding-left: 2.5rem !important; padding-right: 2.5rem !important; margin-top: 0 !important; }
-    .sched-table { font-size: 0.85rem; }
-    .sched-error-cell { font-size: 0.78rem; color: var(--pico-del-color); padding-top: 0 !important; }
-    .sched-viewlog { margin-top: 0.75rem !important; }
-    .sched-viewlog a { font-size: 0.85rem; }
-    .sched-empty { color: var(--pico-muted-color); }
     .sched-scraper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem 1.5rem; align-items: end; }
     .sched-field--full { grid-column: 1/-1; }
     /* ── analyse page ── */

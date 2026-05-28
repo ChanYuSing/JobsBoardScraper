@@ -78,8 +78,9 @@ Open `http://127.0.0.1:8001`.
 ### Step 2 — Configure your search
 
 1. Go to **Sources**.
-2. Enter keywords (one per line — the scraper looks for jobs matching all of the keywords you enter) and set your location.
-3. Click **Save**.
+2. Enable the source(s) you want to use.
+3. Enter keywords (one per line — the scraper looks for jobs matching all of the keywords you enter) and set your location.
+4. Settings are saved automatically as you type.
 
 See [Config reference](#config-reference-configyaml) for all available filters (work type, salary, date range, etc.).
 
@@ -158,7 +159,7 @@ The badge on the Analyse page shows the full breakdown:
 1. Go to **Schedule → Run settings**.
 2. Pick a time and days. Leave all days unchecked to run every day.
 3. Set the run order using the dropdowns.
-4. Click **Save settings** — the scheduler updates immediately, no restart required.
+4. Settings are saved automatically — the scheduler updates immediately, no restart required.
 
 Enable **Auto-score** to have jobs scored automatically after each fetch+enrich cycle.
 
@@ -180,10 +181,10 @@ All settings are editable in the web UI. The file is the single source of truth 
 ```yaml
 sources:
   jobsdb:
-    enabled: true
+    enabled: false
     keywords: null              # one keyword per line in UI; null = all jobs
     location: Hong Kong SAR
-    daterange: null             # 1 | 3 | 7 | 14 | 31 (days) | null = all time
+    daterange: 7                # 1 | 3 | 7 | 14 | 31 (days) | null = all time
     work_arrangement: null      # on-site | hybrid | remote
     work_type: null             # full-time | part-time | contract | casual | internship
     salary_range: null          # e.g. 30000-60000 (monthly HKD)
@@ -196,11 +197,11 @@ sources:
     max_pages: 0                # 0 = no cap
 
   linkedin_guest:
-    enabled: true
+    enabled: false
     keywords: []                # required by LinkedIn — blank returns no results
     location: Hong Kong
     geo_id: null                # numeric geoId e.g. 102234630 for HK; overrides location
-    hours_old: 720              # last N hours (720 = 30 days); null = all time
+    hours_old: 168              # last N hours (168 = 7 days); null = all time
     job_type: null              # fulltime | parttime | contract | temporary | internship | volunteer | other
     is_remote: null             # true (Remote) | hybrid | false (On-site)
     easy_apply: null            # true = Easy Apply only | false = all

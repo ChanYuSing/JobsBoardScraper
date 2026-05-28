@@ -10,7 +10,7 @@
   <header class="source-card__header">
     <div class="source-card__left">
       <span class="source-card__name">Scheduled Runs</span>
-      <form method="post" action="/schedule/toggle-enabled" id="sched-enabled-form" style="margin:0">
+      <form method="post" action="/schedule/toggle-enabled" id="sched-enabled-form">
         <label class="source-toggle--inline source-enabled-toggle">
           <input type="checkbox" role="switch"
                  {% if sched.enabled %}checked{% endif %}
@@ -21,7 +21,7 @@
       {% if running %}<span class="badge badge-running" style="margin-left:0.25rem">run active</span>{% endif %}
     </div>
     <div class="source-card__actions">
-      <form method="post" action="/schedule/run-all" style="margin:0">
+      <form method="post" action="/schedule/run-all">
         <button type="submit" class="secondary outline source-action-btn">&#9654; Run All Now</button>
       </form>
     </div>
