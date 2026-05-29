@@ -292,8 +292,8 @@ ai:
 
 | Provider | `provider` key | Cost | Recommended model | HK access | Get API key |
 |---|---|---|---|---|---|
-| **Ollama** (local) | `ollama` | Free | `llama3.2` | ✅ | [ollama.com/download](https://ollama.com/download) |
-| **LM Studio** (local) | `lmstudio` | Free | any GGUF | ✅ | [lmstudio.ai](https://lmstudio.ai) |
+| **Ollama** (local) | `ollama` | Free ¹ | `llama3.2` | ✅ | [ollama.com/download](https://ollama.com/download) |
+| **LM Studio** (local) | `lmstudio` | Free ¹ | any GGUF | ✅ | [lmstudio.ai](https://lmstudio.ai) |
 | **DeepSeek** | `deepseek` | Very cheap | `deepseek-v4-flash` | ✅ | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
 | **xAI Grok** | `grok` | Pay-per-use | `grok-4-1-fast-non-reasoning` | ✅ | [console.x.ai](https://console.x.ai/) |
 | **Google Gemini** | `gemini` | Free tier available | `gemini-2.0-flash` | ❌ | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
@@ -301,9 +301,13 @@ ai:
 | **Anthropic** | `anthropic` | Pay-per-use | `claude-sonnet-4-5` | ❌ | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
 | **Custom** | `openai_compat` | — | depends | — | set `base_url` manually |
 
+¹ Free but requires running the model on **your own computer**. A dedicated GPU (e.g. NVIDIA RTX series, Apple M-series) is strongly recommended — without one, scoring will be very slow or may not work at all. If you're unsure whether your machine can handle it, use a cloud provider instead.
+
 API keys can be entered via the **Analyse page UI**, set as the `AI_API_KEY` environment variable, or written directly into `config.yaml` under `api_key`.
 
 #### Local AI setup (no API key needed)
+
+> **Hardware note:** Local models run entirely on your computer. You need a reasonably modern machine with a **dedicated GPU** (NVIDIA or Apple Silicon recommended) and at least **8 GB of VRAM / unified memory**. Running on CPU alone is possible but very slow (minutes per job instead of seconds). If your computer isn't powerful enough, use DeepSeek or Grok instead — both are cheap and work in HK.
 
 **Ollama** — runs models entirely on your machine:
 
