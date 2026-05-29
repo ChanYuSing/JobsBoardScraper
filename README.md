@@ -104,7 +104,7 @@ This downloads the full description for each job listing. It takes longer than f
 
 ### Step 5 — Score jobs with AI
 
-> **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from OpenAI, DeepSeek, Gemini, Grok, or Anthropic. Sign up at the provider's website to obtain a key. See the [AI providers](#ai-providers) table.
+> **Prerequisite:** You need a local model (Ollama / LM Studio) or an API key from a supported cloud provider. See the [AI providers](#ai-providers) table — if you're in Hong Kong, **DeepSeek** and **Grok** are the recommended cloud options (OpenAI, Anthropic, and Gemini are not accessible in HK without a VPN).
 
 > **Local AI (Ollama / LM Studio):** These run on your machine, not inside the container. Set `base_url` to use `host.docker.internal`:
 > ```yaml
@@ -213,7 +213,8 @@ sources:
 scraper:
   request_timeout_seconds: 20
   retries: 3
-  jitter_ms: [1000, 3000]       # random delay range between requests (ms)
+  jitter_ms_min: 1000           # random delay lower bound between requests (ms)
+  jitter_ms_max: 3000           # random delay upper bound between requests (ms)
   user_agent: "Mozilla/5.0 ..."
 
 storage:
@@ -289,16 +290,16 @@ ai:
 
 ### AI providers
 
-| Provider | `provider` key | Cost | Recommended model | Get API key |
-|---|---|---|---|---|
-| **Ollama** (local) | `ollama` | Free | `llama3.2` | [ollama.com/download](https://ollama.com/download) |
-| **LM Studio** (local) | `lmstudio` | Free | any GGUF | [lmstudio.ai](https://lmstudio.ai) |
-| **Google Gemini** | `gemini` | Free tier available | `gemini-2.0-flash` | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
-| **DeepSeek** | `deepseek` | Very cheap | `deepseek-chat` | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
-| **OpenAI** | `openai` | Pay-per-use | `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| **Anthropic** | `anthropic` | Pay-per-use | `claude-haiku-4-5` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
-| **xAI Grok** | `grok` | Pay-per-use | `grok-4-1-fast-non-reasoning` | [console.x.ai](https://console.x.ai/) |
-| **Custom** | `openai_compat` | — | depends | set `base_url` manually |
+| Provider | `provider` key | Cost | Recommended model | HK access | Get API key |
+|---|---|---|---|---|---|
+| **Ollama** (local) | `ollama` | Free | `llama3.2` | ✅ | [ollama.com/download](https://ollama.com/download) |
+| **LM Studio** (local) | `lmstudio` | Free | any GGUF | ✅ | [lmstudio.ai](https://lmstudio.ai) |
+| **DeepSeek** | `deepseek` | Very cheap | `deepseek-v4-flash` | ✅ | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
+| **xAI Grok** | `grok` | Pay-per-use | `grok-4-1-fast-non-reasoning` | ✅ | [console.x.ai](https://console.x.ai/) |
+| **Google Gemini** | `gemini` | Free tier available | `gemini-2.0-flash` | ❌ | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
+| **OpenAI** | `openai` | Pay-per-use | `gpt-4o-mini` | ❌ | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Anthropic** | `anthropic` | Pay-per-use | `claude-sonnet-4-5` | ❌ | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| **Custom** | `openai_compat` | — | depends | — | set `base_url` manually |
 
 API keys can be entered via the **Analyse page UI**, set as the `AI_API_KEY` environment variable, or written directly into `config.yaml` under `api_key`.
 
