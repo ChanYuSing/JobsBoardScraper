@@ -1,6 +1,8 @@
 # JobBoardScraper
 
-Scrapes job listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)** into a local SQLite database, with a built-in web UI to browse, filter, triage, and AI-score results.
+A self-hosted job search assistant that scrapes listings from **LinkedIn (guest API)** and **JobsDB (SEEK GraphQL)**, then uses AI to score each job against your CV — so you can focus on the roles most worth applying for.
+
+All data stays on your machine. No accounts, no subscriptions, no cloud sync.
 
 ---
 
