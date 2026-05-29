@@ -33,7 +33,7 @@ JOBSDB_FIELDS: list[dict[str, Any]] = [
 
 LINKEDIN_FIELDS: list[dict[str, Any]] = [
     {"key": "enabled",          "label": "Enabled",          "type": "toggle"},
-    {"key": "keywords",         "label": "Keywords",         "type": "textarea", "hint": "Required — LinkedIn returns no results without keywords. Enter one keyword per line."},
+    {"key": "keywords",         "label": "Keywords",         "type": "textarea", "hint": "Required — LinkedIn returns no results without keywords. Enter one keyword per line.", "required": True},
     {"key": "location",         "label": "Location",         "type": "text",   "hint": "e.g. Hong Kong"},
     {"key": "geo_id",           "label": "Location ID",      "type": "text",   "hint": "Optional numeric geoId — overrides Location text above"},
     {"key": "hours_old",        "label": "Posted within (hrs)", "type": "number", "hint": "e.g. 720 = last 30 days; blank = all time"},

@@ -43,7 +43,7 @@
         {% elif f.type == 'textarea' %}
           {# tag-chip keyword input #}
           <div class="source-field--full">
-            <p class="source-field__label">{{ f.label }}</p>
+            <p class="source-field__label{% if f.get('required') %} source-field__label--required{% endif %}">{{ f.label }}</p>
             {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
             <div class="tag-input" data-field="{{ f.key }}">
               <input type="text" class="tag-input__text" placeholder="Type a keyword and press Enter…" autocomplete="off"/>
@@ -52,7 +52,7 @@
           </div>
         {% elif f.type == 'multiselect' %}
           <div class="source-field--full">
-            <p class="source-field__label">{{ f.label }}</p>
+            <p class="source-field__label{% if f.get('required') %} source-field__label--required{% endif %}">{{ f.label }}</p>
             {% if f.hint %}<small class="source-hint">{{ f.hint }}</small>{% endif %}
             {% set cur_vals = values.get(f.key, '').split(',') %}
             <div class="chip-row{% if f.options|length > 12 %} chip-row--scroll{% endif %}">
