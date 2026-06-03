@@ -23,8 +23,12 @@ Download the pre-built binary for your platform from the [Releases page](https:/
 - **Windows:** double-click `JobBoardScraper-windows.exe`
 - **macOS:**
   1. Unzip `JobBoardScraper-macos.zip`
-  2. **Right-click** `JobBoardScraper.app` → **Open** → **Open**
-  3. *(First time only — right-click is needed once to bypass the unverified developer warning. After that, double-click works normally.)*
+  2. **Right-click** `JobBoardScraper.app` → **Open**
+  3. If you see *"Apple could not verify JobBoardScraper.app is free of malware"*, click **Done** to dismiss it, then:
+     - Open **System Settings → Privacy & Security**
+     - Scroll down to the Security section — you should see a message about JobBoardScraper being blocked
+     - Click **Open Anyway**, then confirm with your password or Touch ID
+  4. *(First time only. After this, double-click works normally.)*
 - **Linux:** open Terminal, then run:
   ```sh
   chmod +x ~/Downloads/JobBoardScraper-linux
